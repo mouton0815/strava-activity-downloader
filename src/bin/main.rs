@@ -1,12 +1,12 @@
 use std::error::Error;
+use std::sync::{Arc, Mutex, MutexGuard};
 use axum::http::StatusCode;
 use axum::{Json, Router};
 use axum::extract::{Query, State};
-use axum::response::Redirect;
+use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
 use gethostname::gethostname;
 use log::{error, info};
-//use anyhow;
 use oauth2::{AuthorizationCode, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, TokenResponse, TokenUrl};
 use oauth2::basic::{BasicClient, BasicTokenResponse};
 use oauth2::reqwest::async_http_client;
@@ -69,9 +69,20 @@ pub struct ErrorResult {
     error: String
 }
 
-async fn retrieve() -> Redirect {
-    // TODO: Only if no JWT exists
-    Redirect::temporary("/authorize")
+type RetrieveResult = Result<Response, (StatusCode, Json<ErrorResult>)>;
+
+async fn retrieve(State(state): State<SharedState>) -> RetrieveResult {
+    let mut guard = state.token.lock().unwrap();
+    match &mut *guard {
+        Some(_token) => {
+            info!("Retrieve: Token found");
+            Ok("foo bar".into_response())
+        }
+        None => {
+            info!("Retrieve: NO token, redirect");
+            Ok(Redirect::temporary("/authorize").into_response())
+        }
+    }
 }
 
 type AuthorizeResult = Result<Redirect, (StatusCode, Json<ErrorResult>)>;
@@ -97,17 +108,19 @@ struct CallbackQuery {
     code: String
 }
 
-type CallbackResult = Result<&'static str, (StatusCode, Json<ErrorResult>)>;
+type CallbackResult = Result<Redirect, (StatusCode, Json<ErrorResult>)>;
 
 async fn auth_callback(State(state): State<SharedState>, query: Query<CallbackQuery>) -> CallbackResult {
-    // TODO: Obtain JWT and store it locally
+    // TODO: Verify signature
     info!("... authorized with code {}", query.code);
     match exchange_code_for_token(state.oauth_client, query.code.clone()).await {
         Ok(token) => {
             info!("Token: {:?}", token);
             info!("Access: {:?}", token.access_token());
             info!("Secret: {}", token.access_token().secret());
-            Ok("authorized")
+            let mut guard: MutexGuard<'_, Option<BasicTokenResponse>> = state.token.lock().unwrap();
+            *guard = Some(token);
+            Ok(Redirect::temporary("/retrieve")) // TODO: Should be URL take from session or parameter
         }
         Err(error) => {
             error!("Error: {}", error);
@@ -120,6 +133,7 @@ async fn auth_callback(State(state): State<SharedState>, query: Query<CallbackQu
 fn create_oauth_client() -> Result<BasicClient, Box<dyn Error>> {
     let host = gethostname();
     let redirect_url = format!("http://{}:{}/auth_callback", host.to_str().unwrap(), PORT);
+    //let redirect_url = format!("http://{}:{}/auth_callback", "localhost", PORT);
     Ok(BasicClient::new(
         ClientId::new(CLIENT_ID.to_string()),
         Some(ClientSecret::new(CLIENT_SECRET.to_string())),
@@ -130,7 +144,8 @@ fn create_oauth_client() -> Result<BasicClient, Box<dyn Error>> {
 
 #[derive(Clone)]
 struct SharedState {
-    oauth_client: BasicClient
+    oauth_client: BasicClient,
+    token : Arc<Mutex<Option<BasicTokenResponse>>>
 }
 
 #[tokio::main]
@@ -139,7 +154,8 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     info!("Hello, world!");
 
     let shared_state = SharedState {
-        oauth_client: create_oauth_client()?
+        oauth_client: create_oauth_client()?,
+        token: Arc::new(Mutex::new(None))
     };
 
     let app = Router::new()
