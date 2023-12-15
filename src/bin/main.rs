@@ -5,8 +5,9 @@ use axum::{Json, Router};
 use axum::extract::{Query, State};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
+use jsonwebtoken::{decode, decode_header, DecodingKey, Validation};
 use log::{info, warn};
-use oauth2::{AuthorizationCode, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, TokenResponse, TokenUrl};
+use oauth2::{AuthorizationCode, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, ResourceOwnerPassword, ResourceOwnerUsername, TokenResponse, TokenUrl};
 use oauth2::basic::{BasicClient, BasicTokenResponse};
 use oauth2::reqwest::async_http_client;
 use serde::{Serialize, Deserialize};
@@ -21,28 +22,18 @@ const CLIENT_SECRET : &'static str = "totally-secret";
 const AUTH_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/auth";
 const TOKEN_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/token";
 
-/*
-fn authorize_password_grant() -> Result<BasicTokenResponse, Box<dyn Error>> {
-    let client =
-        BasicClient::new(
-            ClientId::new("unite-client".to_string()),
-            Some(ClientSecret::new("totally-secret".to_string())),
-            AuthUrl::new("http://localhost:8080/realms/unite/protocol/openid-connect/auth".to_string())?,
-            Some(TokenUrl::new("http://localhost:8080/realms/unite/protocol/openid-connect/token".to_string())?)
-        );
-
-    let token_result =
-        client
-            .exchange_password(
-                &ResourceOwnerUsername::new("fred".to_string()),
-                &ResourceOwnerPassword::new("fred".to_string())
-            )
-            //.add_scope(Scope::new("read".to_string()))
-            .request(http_client)?;
+async fn authorize_password_grant() -> Result<BasicTokenResponse, Box<dyn Error>> {
+    let client = create_oauth_client()?;
+    let token_result = client
+        .exchange_password(
+            &ResourceOwnerUsername::new("fred".to_string()),
+            &ResourceOwnerPassword::new("fred".to_string())
+        )
+        .request_async(async_http_client)
+        .await?;
 
     Ok(token_result)
 }
-*/
 
 fn authorize_auth_code_grant(oauth_client: BasicClient) -> Result<(Url, CsrfToken), Box<dyn Error>> {
     let (auth_url, csrf_token) = oauth_client
@@ -70,17 +61,45 @@ pub struct ErrorResult {
     error: String
 }
 
+#[derive(Deserialize)]
+struct Claims {
+    sub: String,
+    aud: String,
+    exp: u64
+}
+
+fn parse_token(token: &BasicTokenResponse) -> Result<(), Box<dyn Error>> {
+    let token = token.access_token().secret();
+    info!("-----> {}", token);
+    let header = decode_header(token.as_str())?;
+    info!("-----> {:?}", header);
+    let mut validation = Validation::new(header.alg);
+    // This is NOT insecure because the JWT was just received from the Auth server:
+    validation.insecure_disable_signature_validation();
+    validation.validate_aud = false;
+    let token = decode::<Claims>(token, &DecodingKey::from_secret(&[]), &validation)?;
+    info!("-----> {:?}", token.header);
+    info!("-----> {}", token.claims.sub);
+    info!("-----> {}", token.claims.aud);
+    info!("-----> {}", token.claims.exp);
+    Ok(())
+}
+
 type RetrieveResult = Result<Response, (StatusCode, Json<ErrorResult>)>;
 
 async fn retrieve(State(state): State<SharedState>) -> RetrieveResult {
+    // TODO: Can this be done via middleware?
     let token_guard = state.token.lock().await;
     match &*token_guard {
         Some(_token) => {
             info!("Retrieve: Token found");
+            // TODO: Check token validity and refresh potentially
+            // TODO: Do something useful
             Ok("foo bar".into_response())
         }
         None => {
             info!("Retrieve: NO token, redirect");
+            // TODO: Put "/retrieve" into state for later redirect after authentication
             Ok(Redirect::temporary("/authorize").into_response())
         }
     }
@@ -164,6 +183,9 @@ struct SharedState {
 async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
     info!("Hello, world!");
+    let token = authorize_password_grant().await?;
+    parse_token(&token)?;
+    info!("Hello is done");
 
     let shared_state = SharedState {
         oauth_client: create_oauth_client()?,
