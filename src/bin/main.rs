@@ -35,7 +35,7 @@ async fn authorize_password_grant() -> Result<BasicTokenResponse, Box<dyn Error>
     Ok(token_result)
 }
 
-fn authorize_auth_code_grant(oauth_client: BasicClient) -> Result<(Url, CsrfToken), Box<dyn Error>> {
+fn authorize_auth_code_grant(oauth_client: &BasicClient) -> Result<(Url, CsrfToken), Box<dyn Error>> {
     let (auth_url, csrf_token) = oauth_client
         .authorize_url(CsrfToken::new_random)
         //.set_pkce_challenge(pkce_challenge)
@@ -44,7 +44,7 @@ fn authorize_auth_code_grant(oauth_client: BasicClient) -> Result<(Url, CsrfToke
     Ok((auth_url, csrf_token))
 }
 
-async fn exchange_code_for_token(oauth_client: BasicClient, code: String) -> Result<BasicTokenResponse, Box<dyn Error>> {
+async fn exchange_code_for_token(oauth_client: &BasicClient, code: String) -> Result<BasicTokenResponse, Box<dyn Error>> {
     info!("Get token with code {}", code);
     let token = oauth_client
         .exchange_code(AuthorizationCode::new(code))
@@ -87,10 +87,10 @@ fn parse_token(token: &BasicTokenResponse) -> Result<(), Box<dyn Error>> {
 
 type RetrieveResult = Result<Response, (StatusCode, Json<ErrorResult>)>;
 
-async fn retrieve(State(state): State<SharedState>) -> RetrieveResult {
+async fn retrieve(State(state): State<MutexState>) -> RetrieveResult {
     // TODO: Can this be done via middleware?
-    let token_guard = state.token.lock().await;
-    match &*token_guard {
+    let guard = state.lock().await;
+    match &(*guard).token {
         Some(_token) => {
             info!("Retrieve: Token found");
             // TODO: Check token validity and refresh potentially
@@ -107,14 +107,14 @@ async fn retrieve(State(state): State<SharedState>) -> RetrieveResult {
 
 type AuthorizeResult = Result<Redirect, (StatusCode, Json<ErrorResult>)>;
 
-async fn authorize(State(state): State<SharedState>) -> AuthorizeResult {
+async fn authorize(State(state): State<MutexState>) -> AuthorizeResult {
     info!("Authorizing...");
     // TODO: Lock must be set outside the match statement - why?
-    let mut state_guard = state.state.lock().await;
-    match authorize_auth_code_grant(state.oauth_client) {
+    let mut guard = state.lock().await;
+    match authorize_auth_code_grant(&(*guard).oauth_client) {
         Ok((url, csrf_token)) => {
             info!("Success: {}", url);
-            *state_guard = Some(csrf_token.secret().clone());
+            (*guard).oauth_state = Some(csrf_token.secret().clone());
             Ok(Redirect::temporary(url.as_str()))
         }
         Err(error) => {
@@ -133,25 +133,23 @@ struct CallbackQuery {
 
 type CallbackResult = Result<Redirect, (StatusCode, Json<ErrorResult>)>;
 
-async fn auth_callback(State(state): State<SharedState>, query: Query<CallbackQuery>) -> CallbackResult {
+async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQuery>) -> CallbackResult {
     // TODO: Verify signature
     info!("... authorized with code {}", query.code);
-    let mut state_guard = state.state.lock().await;
-    if *state_guard == None || (*state_guard).as_ref().unwrap() != &query.state {
+    let mut guard = state.lock().await;
+    if (*guard).oauth_state == None || (*guard).oauth_state.as_ref().unwrap() != &query.state {
         warn!("Received state {} does not match expected state {}", query.state,
-            (*state_guard).as_ref().unwrap_or(&String::from("<null>")));
+            (*guard).oauth_state.as_ref().unwrap_or(&String::from("<null>")));
         let message = ErrorResult{ error: String::from("Internal error") };
         return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)))
     }
-    // TODO: Lock must be set outside the match statement - why?
-    let mut token_guard = state.token.lock().await;
-    match exchange_code_for_token(state.oauth_client, query.code.clone()).await {
+    match exchange_code_for_token(&(*guard).oauth_client, query.code.clone()).await {
         Ok(token) => {
             info!("Token: {:?}", token);
             info!("Access: {:?}", token.access_token());
             //info!("Secret: {}", token.access_token().secret());
-            *token_guard = Some(token);
-            *state_guard = None;
+            (*guard).token = Some(token);
+            (*guard).oauth_state = None;
             Ok(Redirect::temporary("/retrieve")) // TODO: Should be URL take from session or parameter
         }
         Err(error) => {
@@ -175,9 +173,12 @@ fn create_oauth_client() -> Result<BasicClient, Box<dyn Error>> {
 #[derive(Clone)]
 struct SharedState {
     oauth_client: BasicClient,
-    token: Arc<Mutex<Option<BasicTokenResponse>>>,
-    state: Arc<Mutex<Option<String>>>
+    oauth_state: Option<String>,
+    token: Option<BasicTokenResponse>,
+    token_exp: Option<u64>
 }
+
+type MutexState = Arc<Mutex<SharedState>>;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>>  {
@@ -187,11 +188,12 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     parse_token(&token)?;
     info!("Hello is done");
 
-    let shared_state = SharedState {
+    let shared_state = Arc::new(Mutex::new(SharedState {
         oauth_client: create_oauth_client()?,
-        token: Arc::new(Mutex::new(None)),
-        state: Arc::new(Mutex::new(None))
-    };
+        oauth_state: None,
+        token: None,
+        token_exp: None
+    }));
 
     let app = Router::new()
         .route("/retrieve", get(retrieve))
