@@ -12,7 +12,8 @@ use oauth2::reqwest::async_http_client;
 use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
 use url::Url;
-use strava_gpx_downloader::util::jwt_util::get_expiry_time;
+
+mod util;
 
 const HOST : &'static str = "localhost";
 const PORT : &'static str = "3000";
@@ -59,7 +60,7 @@ async fn exchange_code_for_token(oauth_client: &BasicClient, code: String) -> Ex
     info!("Token: {:?}", token);
     info!("Access: {:?}", token.access_token());
     //info!("Secret: {}", token.access_token().secret());
-    let expiry = get_expiry_time(&token)?;
+    let expiry = util::jwt::get_expiry_time(&token)?;
 
     Ok((token, expiry))
 }
@@ -164,7 +165,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
     info!("Hello, world!");
     let token = authorize_password_grant().await?;
-    get_expiry_time(&token)?;
+    util::jwt::get_expiry_time(&token)?;
     info!("Hello is done");
 
     let shared_state = Arc::new(Mutex::new(SharedState {
