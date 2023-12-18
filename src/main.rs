@@ -46,23 +46,29 @@ fn authorize_auth_code_grant(oauth_client: &BasicClient) -> Result<(Url, CsrfTok
 }
 
 // Returns tokens and extracted expiry time
-type ExchangeResult = Result<(BasicTokenResponse, u64), Box<dyn Error>>;
+type TokenResult = Result<(BasicTokenResponse, u64), Box<dyn Error>>;
 
-async fn exchange_code_for_token(oauth_client: &BasicClient, code: String) -> ExchangeResult {
-    info!("Get token with code {}", code);
+async fn exchange_code_for_token(oauth_client: &BasicClient, code: String) -> TokenResult {
+    info!("Obtain token for code {}", code);
     let token = oauth_client
         .exchange_code(AuthorizationCode::new(code))
         //.set_pkce_verifier(pkce_verifier)
-        //.request(http_client)?;
         .request_async(async_http_client)
         .await?;
 
-    info!("Token: {:?}", token);
-    info!("Access: {:?}", token.access_token());
-    //info!("Secret: {}", token.access_token().secret());
-    let expiry = util::jwt::get_expiry_time(&token)?;
+    info!("Token obtained: {}", token.access_token().secret());
+    util::jwt::validate(token)
+}
 
-    Ok((token, expiry))
+async fn refresh_token(oauth_client: &BasicClient, token: &BasicTokenResponse) -> TokenResult {
+    info!("Access token expired, refreshing ...");
+    let token = oauth_client
+        .exchange_refresh_token(&token.refresh_token().unwrap())
+        .request_async(async_http_client)
+        .await?;
+
+    info!("Token refreshed: {}", token.access_token().secret());
+    util::jwt::validate(token)
 }
 
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
@@ -74,11 +80,22 @@ type RetrieveResult = Result<Response, (StatusCode, Json<ErrorResult>)>;
 
 async fn retrieve(State(state): State<MutexState>) -> RetrieveResult {
     // TODO: Can this be done via middleware?
-    let guard = state.lock().await;
+    let mut guard = state.lock().await;
     match &(*guard).token {
-        Some(_token) => {
+        Some((token, expiry)) => {
             info!("Retrieve: Token found");
-            // TODO: Check token validity and refresh potentially
+            if util::jwt::expired(expiry) {
+                match refresh_token(&(*guard).oauth_client, token).await {
+                    Ok(token) => {
+                        (*guard).token = Some(token);
+                    }
+                    Err(error) => {
+                        warn!("Error: {}", error);
+                        let message = ErrorResult{ error: error.to_string() };
+                        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)))
+                    }
+                }
+            }
             // TODO: Do something useful
             Ok("foo bar".into_response())
         }
@@ -118,7 +135,6 @@ struct CallbackQuery {
 type CallbackResult = Result<Redirect, (StatusCode, Json<ErrorResult>)>;
 
 async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQuery>) -> CallbackResult {
-    // TODO: Verify signature??
     info!("... authorized with code {}", query.code);
     let mut guard = state.lock().await;
     if (*guard).oauth_state == None || (*guard).oauth_state.as_ref().unwrap() != &query.state {
@@ -165,7 +181,8 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
     info!("Hello, world!");
     let token = authorize_password_grant().await?;
-    util::jwt::get_expiry_time(&token)?;
+    info!("--x--> {:?}", token.refresh_token());
+    util::jwt::validate(token)?;
     info!("Hello is done");
 
     let shared_state = Arc::new(Mutex::new(SharedState {
