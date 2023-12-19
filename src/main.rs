@@ -1,8 +1,9 @@
 use std::error::Error;
 use std::sync::Arc;
 use axum::http::StatusCode;
-use axum::{Json, Router};
-use axum::extract::{Query, State};
+use axum::{Json, middleware, Router};
+use axum::extract::{Query, Request, State};
+use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
 use log::{info, warn};
@@ -23,8 +24,10 @@ const CLIENT_SECRET : &'static str = "totally-secret";
 const AUTH_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/auth";
 const TOKEN_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/token";
 
+const AUTH_CALLBACK : &'static str = "/auth_callback";
+
 fn create_oauth_client() -> Result<BasicClient, Box<dyn Error>> {
-    let redirect_url = format!("http://{}:{}/auth_callback", HOST, PORT);
+    let redirect_url = format!("http://{}:{}{}", HOST, PORT, AUTH_CALLBACK);
     Ok(BasicClient::new(
         ClientId::new(CLIENT_ID.to_string()),
         Some(ClientSecret::new(CLIENT_SECRET.to_string())),
@@ -51,21 +54,21 @@ fn authorize_auth_code_grant(oauth_client: &BasicClient) -> Result<(Url, CsrfTok
         .authorize_url(CsrfToken::new_random)
         //.set_pkce_challenge(pkce_challenge)
         .url();
-    info!("----> state is {}", csrf_token.secret());
+    // info!("-----> state is {}", csrf_token.secret());
     Ok((auth_url, csrf_token))
 }
 
 type TokenResult = Result<BasicTokenResponse, Box<dyn Error>>;
 
 async fn exchange_code_for_token(oauth_client: &BasicClient, code: String) -> TokenResult {
-    info!("Obtain token for code {}", code);
+    info!("--c--> Obtain token for code {}", code);
     let token = oauth_client
         .exchange_code(AuthorizationCode::new(code))
         //.set_pkce_verifier(pkce_verifier)
         .request_async(async_http_client)
         .await?;
 
-    info!("Token obtained: {}", token.access_token().secret());
+    info!("--c--> Token obtained: {:?}", token.access_token());
     util::jwt::validate(token)
 }
 
@@ -80,22 +83,48 @@ async fn refresh_token(oauth_client: &BasicClient, token: &BasicTokenResponse) -
     util::jwt::validate(token)
 }
 
-type AccessTokenResult = Result<Option<String>, Box<dyn Error>>;
-
-// TODO: Can this be done via axum middleware?
-async fn token_middleware(State(state): State<MutexState>) -> AccessTokenResult {
+async fn auth_middleware(State(state): State<MutexState>, request: Request, next: Next) -> Response {
+    info!("--m--> Request URI: {}", request.uri());
+    // Do no apply middleware to auth callback route
+    if request.uri().path().starts_with(AUTH_CALLBACK) {
+        info!("--m--> Bypass middleware for auth callback: {}", request.uri());
+        let response = next.run(request).await;
+        info!("--m--> Response status: {}", response.status());
+        return response;
+    }
     let mut guard = state.lock().await;
     match &(*guard).token {
         Some(token) => {
-            info!("Middleware: Token found");
-            if util::jwt::expired(token)? {
-                let token = refresh_token(&(*guard).oauth_client, token).await?;
-                (*guard).token = Some(token);
+            info!("--m--> Token found");
+            if util::jwt::expired(token).unwrap() { // TODO: Rewrite to use u64
+                match refresh_token(&(*guard).oauth_client, token).await {
+                    Ok(token) => {
+                        (*guard).token = Some(token);
+                    }
+                    Err(error) => {
+                        return to_internal_server_error(error).into_response();
+                    }
+                }
             }
-            let access_token = (*guard).token.as_ref().unwrap().access_token().secret();
-            Ok(Some(access_token.clone())) // TODO: clone is not nice
+            drop(guard); // Inner layers might also want to obtain the mutex
+            info!("--m--> Delegate to next layer");
+            let response = next.run(request).await;
+            info!("--m--> Response status: {}", response.status());
+            response
         }
-        None => Ok(None)
+        None => {
+            info!("--m--> NO token, build authorization URL");
+            match authorize_auth_code_grant(&(*guard).oauth_client) {
+                Ok((url, csrf_token)) => {
+                    info!("--m--> Redirect to authorization URL: {}", url);
+                    (*guard).oauth_state = Some(csrf_token.secret().clone());
+                    Redirect::temporary(url.as_str()).into_response()
+                }
+                Err(error) => {
+                    to_internal_server_error(error).into_response()
+                }
+            }
+        }
     }
 }
 
@@ -112,32 +141,18 @@ fn to_internal_server_error(error: Box<dyn Error>) -> RestError {
     (StatusCode::INTERNAL_SERVER_ERROR, Json(message))
 }
 
-// TODO: Return type could be simplified to "Response" if middleware does not return errors
-async fn retrieve(State(state): State<MutexState>) -> Result<Response, RestError> {
-    match token_middleware(State(state)).await.map_err(to_internal_server_error)? {
-        Some(_token) => {
-            // TODO: Do something useful
-            Ok(Json("foo bar").into_response())
-        }
-        None => {
-            info!("Retrieve: NO token, redirect");
-            // TODO: Put "/retrieve" into state for later redirect after authentication
-            Ok(Redirect::temporary("/authorize").into_response())
-        }
-    }
+async fn get_bearer(State(state): State<MutexState>) -> String {
+    let guard = state.lock().await;
+    let token = (*guard).token.as_ref().expect("Token missing (middleware error)");
+    token.access_token().secret().clone() // TOOD: Can cloning be avoided?
 }
 
-async fn authorize(State(state): State<MutexState>) -> Result<Redirect, RestError> {
-    info!("Authorizing...");
-    let mut guard = state.lock().await;
-    match authorize_auth_code_grant(&(*guard).oauth_client) {
-        Ok((url, csrf_token)) => {
-            info!("Success: {}", url);
-            (*guard).oauth_state = Some(csrf_token.secret().clone());
-            Ok(Redirect::temporary(url.as_str()))
-        }
-        Err(error) => Err(to_internal_server_error(error))
-    }
+async fn retrieve(State(state): State<MutexState>) -> Response {
+    info!("--r--> Enter /retrieve");
+    let bearer : String = get_bearer(State(state)).await.chars().take(100).collect();
+    info!("--r--> Token prefix: {}", bearer);
+    // TODO: Do something useful
+    Json("foo bar").into_response()
 }
 
 #[derive(Deserialize)]
@@ -147,7 +162,7 @@ struct CallbackQuery {
 }
 
 async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQuery>) -> Result<Redirect, RestError> {
-    info!("... authorized with code {}", query.code);
+    info!("--c--> Authorized with code {}", query.code);
     let mut guard = state.lock().await;
     if (*guard).oauth_state == None || (*guard).oauth_state.as_ref().unwrap() != &query.state {
         warn!("Received state {} does not match expected state {}", query.state,
@@ -180,11 +195,9 @@ type MutexState = Arc<Mutex<SharedState>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
-    info!("Hello, world!");
     let token = authorize_password_grant().await?;
     info!("--x--> {:?}", token.refresh_token());
     util::jwt::validate(token)?;
-    info!("Hello is done");
 
     let shared_state = Arc::new(Mutex::new(SharedState {
         oauth_client: create_oauth_client()?,
@@ -194,8 +207,8 @@ async fn main() -> Result<(), Box<dyn Error>>  {
 
     let app = Router::new()
         .route("/retrieve", get(retrieve))
-        .route("/authorize", get(authorize))
-        .route("/auth_callback", get(auth_callback))
+        .route(AUTH_CALLBACK, get(auth_callback))
+        .route_layer(middleware::from_fn_with_state(shared_state.clone(), auth_middleware))
         .with_state(shared_state);
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", HOST, PORT)).await?;
