@@ -58,29 +58,33 @@ fn authorize_auth_code_grant(oauth_client: &BasicClient) -> Result<(Url, CsrfTok
     Ok((auth_url, csrf_token))
 }
 
-type TokenResult = Result<BasicTokenResponse, Box<dyn Error>>;
+type TokenResult = Result<(BasicTokenResponse, u64), Box<dyn Error>>;
 
 async fn exchange_code_for_token(oauth_client: &BasicClient, code: String) -> TokenResult {
     info!("--c--> Obtain token for code {}", code);
-    let token = oauth_client
+    let token = util::jwt::validate(oauth_client
         .exchange_code(AuthorizationCode::new(code))
         //.set_pkce_verifier(pkce_verifier)
         .request_async(async_http_client)
-        .await?;
+        .await?)?;
 
-    info!("--c--> Token obtained: {:?}", token.access_token());
-    util::jwt::validate(token)
+    let bearer : String = token.access_token().secret().chars().take(100).collect();
+    info!("--c--> Token obtained: {}", bearer);
+    let expiry = util::jwt::get_expiry_time(token.access_token())?;
+    Ok((token, expiry))
 }
 
 async fn refresh_token(oauth_client: &BasicClient, token: &BasicTokenResponse) -> TokenResult {
     info!("Access token expired, refreshing ...");
-    let token = oauth_client
+    let token = util::jwt::validate(oauth_client
         .exchange_refresh_token(&token.refresh_token().unwrap())
         .request_async(async_http_client)
-        .await?;
+        .await?)?;
 
-    info!("Token refreshed: {}", token.access_token().secret());
-    util::jwt::validate(token)
+    let bearer : String = token.access_token().secret().chars().take(100).collect();
+    info!("--c--> Token obtained: {}", bearer);
+    let expiry = util::jwt::get_expiry_time(token.access_token())?;
+    Ok((token, expiry))
 }
 
 async fn auth_middleware(State(state): State<MutexState>, request: Request, next: Next) -> Response {
@@ -94,9 +98,9 @@ async fn auth_middleware(State(state): State<MutexState>, request: Request, next
     }
     let mut guard = state.lock().await;
     match &(*guard).token {
-        Some(token) => {
+        Some((token, expiry)) => {
             info!("--m--> Token found");
-            if util::jwt::expired(token).unwrap() { // TODO: Rewrite to use u64
+            if util::jwt::is_expired(expiry) {
                 match refresh_token(&(*guard).oauth_client, token).await {
                     Ok(token) => {
                         (*guard).token = Some(token);
@@ -143,8 +147,8 @@ fn to_internal_server_error(error: Box<dyn Error>) -> RestError {
 
 async fn get_bearer(State(state): State<MutexState>) -> String {
     let guard = state.lock().await;
-    let token = (*guard).token.as_ref().expect("Token missing (middleware error)");
-    token.access_token().secret().clone() // TOOD: Can cloning be avoided?
+    let (token, _) = (*guard).token.as_ref().expect("Token missing (middleware error)");
+    token.access_token().secret().clone() // TODO: Can cloning be avoided?
 }
 
 async fn retrieve(State(state): State<MutexState>) -> Response {
@@ -187,7 +191,7 @@ async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQue
 struct SharedState {
     oauth_client: BasicClient,
     oauth_state: Option<String>,
-    token: Option<BasicTokenResponse>
+    token: Option<(BasicTokenResponse, u64)> // Extract expiry time only once and store it
 }
 
 type MutexState = Arc<Mutex<SharedState>>;
@@ -197,7 +201,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
     let token = authorize_password_grant().await?;
     info!("--x--> {:?}", token.refresh_token());
-    util::jwt::validate(token)?;
+    util::jwt::validate(&token)?;
 
     let shared_state = Arc::new(Mutex::new(SharedState {
         oauth_client: create_oauth_client()?,
