@@ -45,8 +45,7 @@ fn authorize_auth_code_grant(oauth_client: &BasicClient) -> Result<(Url, CsrfTok
     Ok((auth_url, csrf_token))
 }
 
-// Returns tokens and extracted expiry time
-type TokenResult = Result<(BasicTokenResponse, u64), Box<dyn Error>>;
+type TokenResult = Result<BasicTokenResponse, Box<dyn Error>>;
 
 async fn exchange_code_for_token(oauth_client: &BasicClient, code: String) -> TokenResult {
     info!("Obtain token for code {}", code);
@@ -71,33 +70,41 @@ async fn refresh_token(oauth_client: &BasicClient, token: &BasicTokenResponse) -
     util::jwt::validate(token)
 }
 
+// TODO: Can this be done via axum middleware?
+async fn token_middleware(State(state): State<MutexState>) -> Result<Option<String>, Box<dyn Error>> {
+    let mut guard = state.lock().await;
+    match &(*guard).token {
+        Some(token) => {
+            info!("Middleware: Token found");
+            if util::jwt::expired(token)? {
+                let token = refresh_token(&(*guard).oauth_client, token).await?;
+                (*guard).token = Some(token);
+            }
+            Ok(Some((*guard).token.as_ref().unwrap().access_token().secret().clone())) // TODO: clone is not nice
+        }
+        None => Ok(None)
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Eq, PartialEq)]
-pub struct ErrorResult {
+struct ErrorResult {
     error: String
 }
 
-type RetrieveResult = Result<Response, (StatusCode, Json<ErrorResult>)>;
+type RestError = (StatusCode, Json<ErrorResult>);
 
-async fn retrieve(State(state): State<MutexState>) -> RetrieveResult {
-    // TODO: Can this be done via middleware?
-    let mut guard = state.lock().await;
-    match &(*guard).token {
-        Some((token, expiry)) => {
-            info!("Retrieve: Token found");
-            if util::jwt::expired(expiry) {
-                match refresh_token(&(*guard).oauth_client, token).await {
-                    Ok(token) => {
-                        (*guard).token = Some(token);
-                    }
-                    Err(error) => {
-                        warn!("Error: {}", error);
-                        let message = ErrorResult{ error: error.to_string() };
-                        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)))
-                    }
-                }
-            }
+fn to_internal_server_error(error: Box<dyn Error>) -> RestError {
+    warn!("Error: {}", error);
+    let message = ErrorResult { error: error.to_string() };
+    (StatusCode::INTERNAL_SERVER_ERROR, Json(message))
+}
+
+// TODO: Return type could be simplified to "Response" if middleware does not return errors
+async fn retrieve(State(state): State<MutexState>) -> Result<Response, RestError> {
+    match token_middleware(State(state)).await.map_err(to_internal_server_error)? {
+        Some(_token) => {
             // TODO: Do something useful
-            Ok("foo bar".into_response())
+            Ok(Json("foo bar").into_response())
         }
         None => {
             info!("Retrieve: NO token, redirect");
@@ -107,9 +114,7 @@ async fn retrieve(State(state): State<MutexState>) -> RetrieveResult {
     }
 }
 
-type AuthorizeResult = Result<Redirect, (StatusCode, Json<ErrorResult>)>;
-
-async fn authorize(State(state): State<MutexState>) -> AuthorizeResult {
+async fn authorize(State(state): State<MutexState>) -> Result<Redirect, RestError> {
     info!("Authorizing...");
     let mut guard = state.lock().await;
     match authorize_auth_code_grant(&(*guard).oauth_client) {
@@ -118,11 +123,7 @@ async fn authorize(State(state): State<MutexState>) -> AuthorizeResult {
             (*guard).oauth_state = Some(csrf_token.secret().clone());
             Ok(Redirect::temporary(url.as_str()))
         }
-        Err(error) => {
-            warn!("Error: {}", error);
-            let message = ErrorResult{ error: error.to_string() };
-            Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)))
-        }
+        Err(error) => Err(to_internal_server_error(error))
     }
 }
 
@@ -132,16 +133,13 @@ struct CallbackQuery {
     state: String
 }
 
-type CallbackResult = Result<Redirect, (StatusCode, Json<ErrorResult>)>;
-
-async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQuery>) -> CallbackResult {
+async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQuery>) -> Result<Redirect, RestError> {
     info!("... authorized with code {}", query.code);
     let mut guard = state.lock().await;
     if (*guard).oauth_state == None || (*guard).oauth_state.as_ref().unwrap() != &query.state {
         warn!("Received state {} does not match expected state {}", query.state,
             (*guard).oauth_state.as_ref().unwrap_or(&String::from("<null>")));
-        let message = ErrorResult{ error: String::from("Internal error") };
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(message)))
+        return Err(to_internal_server_error("Internal error".into()))
     }
     match exchange_code_for_token(&(*guard).oauth_client, query.code.clone()).await {
         Ok(token) => {
@@ -171,7 +169,7 @@ fn create_oauth_client() -> Result<BasicClient, Box<dyn Error>> {
 struct SharedState {
     oauth_client: BasicClient,
     oauth_state: Option<String>,
-    token: Option<(BasicTokenResponse, u64)> // Extract token expiry time once
+    token: Option<BasicTokenResponse>
 }
 
 type MutexState = Arc<Mutex<SharedState>>;
