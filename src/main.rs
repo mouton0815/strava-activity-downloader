@@ -14,7 +14,7 @@ use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
 use url::Url;
 
-mod util;
+mod auth;
 
 const HOST : &'static str = "localhost";
 const PORT : &'static str = "3000";
@@ -62,7 +62,7 @@ type TokenResult = Result<(BasicTokenResponse, u64), Box<dyn Error>>;
 
 async fn exchange_code_for_token(oauth_client: &BasicClient, code: String) -> TokenResult {
     info!("--c--> Obtain token for code {}", code);
-    let token = util::jwt::validate(oauth_client
+    let token = auth::token::validate(oauth_client
         .exchange_code(AuthorizationCode::new(code))
         //.set_pkce_verifier(pkce_verifier)
         .request_async(async_http_client)
@@ -70,20 +70,20 @@ async fn exchange_code_for_token(oauth_client: &BasicClient, code: String) -> To
 
     let bearer : String = token.access_token().secret().chars().take(100).collect();
     info!("--c--> Token obtained: {}", bearer);
-    let expiry = util::jwt::get_expiry_time(token.access_token())?;
+    let expiry = auth::token::get_expiry_time(token.access_token())?;
     Ok((token, expiry))
 }
 
 async fn refresh_token(oauth_client: &BasicClient, token: &BasicTokenResponse) -> TokenResult {
     info!("Access token expired, refreshing ...");
-    let token = util::jwt::validate(oauth_client
+    let token = auth::token::validate(oauth_client
         .exchange_refresh_token(&token.refresh_token().unwrap())
         .request_async(async_http_client)
         .await?)?;
 
     let bearer : String = token.access_token().secret().chars().take(100).collect();
     info!("--c--> Token obtained: {}", bearer);
-    let expiry = util::jwt::get_expiry_time(token.access_token())?;
+    let expiry = auth::token::get_expiry_time(token.access_token())?;
     Ok((token, expiry))
 }
 
@@ -100,7 +100,7 @@ async fn auth_middleware(State(state): State<MutexState>, request: Request, next
     match &(*guard).token {
         Some((token, expiry)) => {
             info!("--m--> Token found");
-            if util::jwt::is_expired(expiry) {
+            if auth::token::is_expired(expiry) {
                 match refresh_token(&(*guard).oauth_client, token).await {
                     Ok(token) => {
                         (*guard).token = Some(token);
@@ -208,7 +208,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
     let token = authorize_password_grant().await?;
     info!("--x--> {:?}", token.refresh_token());
-    util::jwt::validate(token)?;
+    auth::token::validate(token)?;
 
     let shared_state = Arc::new(Mutex::new(SharedState {
         oauth_client: create_oauth_client()?,
