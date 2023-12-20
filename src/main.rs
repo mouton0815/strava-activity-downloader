@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::sync::Arc;
-use axum::http::StatusCode;
+use axum::http::{StatusCode, Uri};
 use axum::{Json, middleware, Router};
 use axum::extract::{Query, Request, State};
 use axum::middleware::Next;
@@ -122,6 +122,7 @@ async fn auth_middleware(State(state): State<MutexState>, request: Request, next
                 Ok((url, csrf_token)) => {
                     info!("--m--> Redirect to authorization URL: {}", url);
                     (*guard).oauth_state = Some(csrf_token.secret().clone());
+                    (*guard).origin = Some(request.uri().clone());
                     Redirect::temporary(url.as_str()).into_response()
                 }
                 Err(error) => {
@@ -168,16 +169,21 @@ struct CallbackQuery {
 async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQuery>) -> Result<Redirect, RestError> {
     info!("--c--> Authorized with code {}", query.code);
     let mut guard = state.lock().await;
-    if (*guard).oauth_state == None || (*guard).oauth_state.as_ref().unwrap() != &query.state {
+    if (*guard).origin.is_none()
+        || (*guard).oauth_state.is_none()
+        || (*guard).oauth_state.as_ref().unwrap() != &query.state {
         warn!("Received state {} does not match expected state {}", query.state,
             (*guard).oauth_state.as_ref().unwrap_or(&String::from("<null>")));
         return Err(to_internal_server_error("Internal error".into()))
     }
     match exchange_code_for_token(&(*guard).oauth_client, query.code.clone()).await {
         Ok(token) => {
+            let uri = (*guard).origin.as_ref().unwrap().to_string();
             (*guard).token = Some(token);
             (*guard).oauth_state = None;
-            Ok(Redirect::temporary("/retrieve")) // TODO: Should be URL take from session or parameter
+            (*guard).origin = None;
+            info!("--c--> Redirect to origin URL: {}", uri);
+            Ok(Redirect::temporary(uri.as_str()))
         }
         Err(error) => {
             warn!("Error: {}", error);
@@ -191,6 +197,7 @@ async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQue
 struct SharedState {
     oauth_client: BasicClient,
     oauth_state: Option<String>,
+    origin: Option<Uri>, // REST endpoint that triggered the authentication
     token: Option<(BasicTokenResponse, u64)> // Extract expiry time only once and store it
 }
 
@@ -201,11 +208,12 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
     let token = authorize_password_grant().await?;
     info!("--x--> {:?}", token.refresh_token());
-    util::jwt::validate(&token)?;
+    util::jwt::validate(token)?;
 
     let shared_state = Arc::new(Mutex::new(SharedState {
         oauth_client: create_oauth_client()?,
         oauth_state: None,
+        origin: None,
         token: None
     }));
 
