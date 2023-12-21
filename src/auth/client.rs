@@ -1,7 +1,11 @@
 use std::error::Error;
-use oauth2::basic::{BasicClient, BasicTokenResponse};
-use oauth2::{AuthUrl, ClientId, ClientSecret, RedirectUrl, ResourceOwnerPassword, ResourceOwnerUsername, TokenUrl};
+use log::debug;
+use oauth2::basic::BasicClient;
+use oauth2::{AuthorizationCode, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, ResourceOwnerPassword, ResourceOwnerUsername, TokenResponse, TokenUrl};
 use oauth2::reqwest::async_http_client;
+use url::Url;
+use crate::auth::token;
+use crate::TokenHolder;
 
 const HOST : &'static str = "localhost";
 const PORT : &'static str = "3000";
@@ -12,6 +16,8 @@ const AUTH_URL : &'static str = "http://localhost:8080/realms/unite/protocol/ope
 const TOKEN_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/token";
 
 const AUTH_CALLBACK : &'static str = "/auth_callback";
+
+type TokenResult = Result<TokenHolder, Box<dyn Error>>;
 
 pub struct OAuthClient(BasicClient);
 
@@ -28,8 +34,8 @@ impl OAuthClient {
         Ok(Self { 0: client })
     }
 
-    pub async fn authorize_password_grant(&self, user: &str, pass: &str) -> Result<BasicTokenResponse, Box<dyn Error>> {
-        let token_result = self.0
+    pub async fn authorize_password_grant(&self, user: &str, pass: &str) -> TokenResult {
+        let token = self.0
             .exchange_password(
                 &ResourceOwnerUsername::new(user.to_string()),
                 &ResourceOwnerPassword::new(pass.to_string())
@@ -37,6 +43,36 @@ impl OAuthClient {
             .request_async(async_http_client)
             .await?;
 
-        Ok(token_result)
+        TokenHolder::new(token)
+    }
+
+    pub fn authorize_auth_code_grant(&self) -> Result<(Url, CsrfToken), Box<dyn Error>> {
+        let (auth_url, csrf_token) = self.0
+            .authorize_url(CsrfToken::new_random)
+            //.set_pkce_challenge(pkce_challenge)
+            .url();
+        debug!("State is {}", csrf_token.secret());
+        Ok((auth_url, csrf_token))
+    }
+
+    pub async fn exchange_code_for_token(&self, code: &String) -> TokenResult {
+        debug!("Obtain token for code {}", code);
+        let token = token::validate(self.0
+            .exchange_code(AuthorizationCode::new(code.clone()))
+            //.set_pkce_verifier(pkce_verifier)
+            .request_async(async_http_client)
+            .await?)?;
+
+        TokenHolder::new(token)
+    }
+
+    pub async fn refresh_token(&self, token_holder: &TokenHolder) -> TokenResult {
+        debug!("Access token expired, refreshing ...");
+        let token = token::validate(self.0
+            .exchange_refresh_token(&token_holder.token.refresh_token().unwrap())
+            .request_async(async_http_client)
+            .await?)?;
+
+        TokenHolder::new(token)
     }
 }
