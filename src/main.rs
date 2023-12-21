@@ -2,17 +2,19 @@ use std::error::Error;
 use std::sync::Arc;
 use axum::http::{StatusCode, Uri};
 use axum::{Json, middleware, Router};
-use axum::extract::{Query, Request, State};
+use axum::extract::{Extension, Query, Request, State};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
+use axum_macros::debug_handler;
 use log::{info, warn};
-use oauth2::{AuthorizationCode, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, ResourceOwnerPassword, ResourceOwnerUsername, TokenResponse, TokenUrl};
+use oauth2::{AuthorizationCode, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, TokenResponse, TokenUrl};
 use oauth2::basic::{BasicClient, BasicTokenResponse};
 use oauth2::reqwest::async_http_client;
 use serde::{Serialize, Deserialize};
 use tokio::sync::Mutex;
 use url::Url;
+use crate::auth::client::OAuthClient;
 
 mod auth;
 
@@ -26,6 +28,21 @@ const TOKEN_URL : &'static str = "http://localhost:8080/realms/unite/protocol/op
 
 const AUTH_CALLBACK : &'static str = "/auth_callback";
 
+#[derive(Clone, Debug)]
+struct Bearer(String);
+
+impl From<String> for Bearer {
+    fn from(item: String) -> Self {
+        Self { 0: item }
+    }
+}
+
+impl From<Bearer> for String {
+    fn from(item: Bearer) -> Self {
+        item.0
+    }
+}
+
 fn create_oauth_client() -> Result<BasicClient, Box<dyn Error>> {
     let redirect_url = format!("http://{}:{}{}", HOST, PORT, AUTH_CALLBACK);
     Ok(BasicClient::new(
@@ -34,19 +51,6 @@ fn create_oauth_client() -> Result<BasicClient, Box<dyn Error>> {
         AuthUrl::new(AUTH_URL.to_string())?,
         Some(TokenUrl::new(TOKEN_URL.to_string())?)
     ).set_redirect_uri(RedirectUrl::new(redirect_url)?))
-}
-
-async fn authorize_password_grant() -> Result<BasicTokenResponse, Box<dyn Error>> {
-    let client = create_oauth_client()?;
-    let token_result = client
-        .exchange_password(
-            &ResourceOwnerUsername::new("fred".to_string()),
-            &ResourceOwnerPassword::new("fred".to_string())
-        )
-        .request_async(async_http_client)
-        .await?;
-
-    Ok(token_result)
 }
 
 fn authorize_auth_code_grant(oauth_client: &BasicClient) -> Result<(Url, CsrfToken), Box<dyn Error>> {
@@ -61,7 +65,7 @@ fn authorize_auth_code_grant(oauth_client: &BasicClient) -> Result<(Url, CsrfTok
 type TokenResult = Result<(BasicTokenResponse, u64), Box<dyn Error>>;
 
 async fn exchange_code_for_token(oauth_client: &BasicClient, code: String) -> TokenResult {
-    info!("--c--> Obtain token for code {}", code);
+    info!("--c--> Obtain token for code {}", code); // TODO: Change to debug!()
     let token = auth::token::validate(oauth_client
         .exchange_code(AuthorizationCode::new(code))
         //.set_pkce_verifier(pkce_verifier)
@@ -87,7 +91,8 @@ async fn refresh_token(oauth_client: &BasicClient, token: &BasicTokenResponse) -
     Ok((token, expiry))
 }
 
-async fn auth_middleware(State(state): State<MutexState>, request: Request, next: Next) -> Response {
+// TODO: Note: Middleware can also return Result<Response, StatusCode> (or similar?)
+async fn auth_middleware(State(state): State<MutexState>, mut request: Request, next: Next) -> Response {
     info!("--m--> Request URI: {}", request.uri());
     // Do no apply middleware to auth callback route
     if request.uri().path().starts_with(AUTH_CALLBACK) {
@@ -104,12 +109,16 @@ async fn auth_middleware(State(state): State<MutexState>, request: Request, next
                 match refresh_token(&(*guard).oauth_client, token).await {
                     Ok(token) => {
                         (*guard).token = Some(token);
+                        // TODO: Drop guard here?
                     }
                     Err(error) => {
                         return to_internal_server_error(error).into_response();
                     }
                 }
             }
+            let access = (*guard).token.as_ref().expect("Missing token").0.access_token();
+            let bearer = format!("Bearer {}", access.secret());
+            request.extensions_mut().insert(bearer); // TODO: Extract Bearer earlier!
             drop(guard); // Inner layers might also want to obtain the mutex
             info!("--m--> Delegate to next layer");
             let response = next.run(request).await;
@@ -146,16 +155,11 @@ fn to_internal_server_error(error: Box<dyn Error>) -> RestError {
     (StatusCode::INTERNAL_SERVER_ERROR, Json(message))
 }
 
-async fn get_bearer(State(state): State<MutexState>) -> String {
-    let guard = state.lock().await;
-    let (token, _) = (*guard).token.as_ref().expect("Token missing (middleware error)");
-    token.access_token().secret().clone() // TODO: Can cloning be avoided?
-}
-
-async fn retrieve(State(state): State<MutexState>) -> Response {
+#[debug_handler]
+async fn retrieve(Extension(bearer): Extension<Bearer>) -> Response {
     info!("--r--> Enter /retrieve");
-    let bearer : String = get_bearer(State(state)).await.chars().take(100).collect();
-    info!("--r--> Token prefix: {}", bearer);
+    let bearer : String = bearer.into();
+    info!("--r--> {}", bearer);
     // TODO: Do something useful
     Json("foo bar").into_response()
 }
@@ -206,7 +210,8 @@ type MutexState = Arc<Mutex<SharedState>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
-    let token = authorize_password_grant().await?;
+    let client = OAuthClient::new()?;
+    let token = client.authorize_password_grant("fred", "fred").await?;
     info!("--x--> {:?}", token.refresh_token());
     auth::token::validate(token)?;
 

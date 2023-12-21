@@ -11,6 +11,8 @@ struct Claims {
     exp: u64
 }
 
+// TODO: Create AuthToken class (?)
+
 pub fn is_expired(expiry_time: &u64) -> bool {
     expiry_time - EXPIRY_LEEWAY < get_current_timestamp()
 }
