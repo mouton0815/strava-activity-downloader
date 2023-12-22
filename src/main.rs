@@ -8,7 +8,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::get;
 use axum_macros::debug_handler;
 use log::{debug, info, warn};
-use serde::{Serialize, Deserialize};
+use serde::Deserialize;
 use tokio::sync::Mutex;
 use crate::auth::client::{AUTH_CALLBACK, OAuthClient};
 use crate::auth::token::{Bearer, TokenHolder};
@@ -19,14 +19,14 @@ const HOST : &'static str = "localhost";
 const PORT : &'static str = "3000";
 
 // TODO: Note: Middleware can also return Result<Response, StatusCode> (or similar?)
-async fn oauth_middleware(State(state): State<MutexState>, mut request: Request, next: Next) -> Response {
-    debug!("[auth middleware] Request URI: {}", request.uri());
+async fn oauth_middleware(State(state): State<MutexState>, mut request: Request, next: Next) -> Result<Response, StatusCode> {
+    debug!("[oauth middleware] Request URI: {}", request.uri());
     // Do no apply middleware to auth callback route
     if request.uri().path().starts_with(AUTH_CALLBACK) {
         debug!("[oauth middleware] Bypass middleware for auth callback: {}", request.uri());
         let response = next.run(request).await;
         debug!("[oauth middleware] Response status from next layer: {}", response.status());
-        return response;
+        return Ok(response);
     }
     let mut guard = state.lock().await;
     match &(*guard).token {
@@ -38,7 +38,8 @@ async fn oauth_middleware(State(state): State<MutexState>, mut request: Request,
                         (*guard).token = Some(token);
                     }
                     Err(error) => {
-                        return to_internal_server_error(error).into_response();
+                        warn!("[oauth middleware] Error: {}", error);
+                        return Err(StatusCode::INTERNAL_SERVER_ERROR);
                     }
                 }
             }
@@ -48,7 +49,7 @@ async fn oauth_middleware(State(state): State<MutexState>, mut request: Request,
             debug!("[oauth middleware] Delegate to next layer");
             let response = next.run(request).await;
             debug!("[oauth middleware] Response status from next layer: {}", response.status());
-            response
+            Ok(response)
         }
         None => {
             debug!("[oauth middleware] NO token, build authorization URL");
@@ -57,10 +58,11 @@ async fn oauth_middleware(State(state): State<MutexState>, mut request: Request,
                     info!("[oauth middleware] Not authorized, redirect to {}", url);
                     (*guard).state = Some(csrf_token.secret().clone());
                     (*guard).origin = Some(request.uri().clone());
-                    Redirect::temporary(url.as_str()).into_response()
+                    Ok(Redirect::temporary(url.as_str()).into_response())
                 }
                 Err(error) => {
-                    to_internal_server_error(error).into_response()
+                    warn!("[oauth middleware] Error: {}", error);
+                    Err(StatusCode::INTERNAL_SERVER_ERROR)
                 }
             }
         }
@@ -73,7 +75,7 @@ struct CallbackQuery {
     state: String
 }
 
-async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQuery>) -> Result<Redirect, RestError> {
+async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQuery>) -> Result<Redirect, StatusCode> {
     debug!("[oauth callback] Authorized with code {}", query.code);
     let mut guard = state.lock().await;
     if (*guard).origin.is_none()
@@ -81,7 +83,7 @@ async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQue
         || (*guard).state.as_ref().unwrap() != &query.state {
         warn!("[oauth callback] Received state {} does not match expected state {}", query.state,
             (*guard).state.as_ref().unwrap_or(&String::from("<null>")));
-        return Err(to_internal_server_error("Internal error".into()))
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
     match (*guard).client.exchange_code_for_token(&query.code).await {
         Ok(token) => {
@@ -94,30 +96,16 @@ async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQue
         }
         Err(error) => {
             warn!("[oauth callback] Error: {}", error);
-            let message = ErrorResult{ error: error.to_string() };
-            Err((StatusCode::UNAUTHORIZED, Json(message)))
+            Err(StatusCode::UNAUTHORIZED)
         }
     }
-}
-
-#[derive(Serialize, Debug, Eq, PartialEq)]
-struct ErrorResult {
-    error: String
-}
-
-type RestError = (StatusCode, Json<ErrorResult>);
-
-fn to_internal_server_error(error: Box<dyn Error>) -> RestError {
-    warn!("Error: {}", error);
-    let message = ErrorResult { error: error.to_string() };
-    (StatusCode::INTERNAL_SERVER_ERROR, Json(message))
 }
 
 #[debug_handler]
 async fn retrieve(Extension(bearer): Extension<Bearer>) -> Response {
     info!("--r--> Enter /retrieve");
     let bearer : String = bearer.into();
-    info!("--r--> {}", bearer);
+    info!("--r--> {}", &bearer.as_str()[..100]);
     // TODO: Do something useful
     Json("foo bar").into_response()
 }
