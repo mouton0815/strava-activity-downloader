@@ -15,7 +15,7 @@ const CLIENT_SECRET : &'static str = "totally-secret";
 const AUTH_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/auth";
 const TOKEN_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/token";
 
-const AUTH_CALLBACK : &'static str = "/auth_callback";
+pub const AUTH_CALLBACK : &'static str = "/auth_callback";
 
 type TokenResult = Result<TokenHolder, Box<dyn Error>>;
 
