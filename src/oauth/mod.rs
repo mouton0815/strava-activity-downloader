@@ -11,14 +11,14 @@ use crate::{AUTH_CALLBACK, OAuthClient, TokenHolder};
 pub mod client;
 pub mod token;
 
-pub struct SharedState {
+pub struct OAuthState {
     client: OAuthClient,
     state: Option<String>,
     origin: Option<Uri>, // REST endpoint that triggered the authentication
     token: Option<TokenHolder>
 }
 
-impl SharedState {
+impl OAuthState {
     pub fn new(client: OAuthClient) -> Arc<Mutex<Self>> {
         Arc::new(Mutex::new(Self {
             client,
@@ -29,7 +29,7 @@ impl SharedState {
     }
 }
 
-type MutexState = Arc<Mutex<SharedState>>;
+type MutexState = Arc<Mutex<OAuthState>>;
 
 pub async fn middleware(State(state): State<MutexState>, mut request: Request, next: Next) -> Result<Response, StatusCode> {
     debug!("[oauth middleware] Request URI: {}", request.uri());

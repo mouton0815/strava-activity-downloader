@@ -7,11 +7,6 @@ use url::Url;
 use crate::oauth::token;
 use crate::TokenHolder;
 
-const CLIENT_ID : &'static str = "unite-client";
-const CLIENT_SECRET : &'static str = "totally-secret";
-const AUTH_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/auth";
-const TOKEN_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/token";
-
 pub const AUTH_CALLBACK : &'static str = "/auth_callback";
 
 type TokenResult = Result<TokenHolder, Box<dyn Error>>;
@@ -19,14 +14,18 @@ type TokenResult = Result<TokenHolder, Box<dyn Error>>;
 pub struct OAuthClient(BasicClient);
 
 impl OAuthClient {
-    // TODO: Pass parameters
-    pub fn new(host: &str, port: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn new(host: &str,
+               port: &str,
+               client_id: &str,
+               client_secret: &str,
+               auth_url: &str,
+               token_url: &str) -> Result<Self, Box<dyn Error>> {
         let redirect_url = format!("http://{}:{}{}", host, port, AUTH_CALLBACK);
         let client = BasicClient::new(
-            ClientId::new(CLIENT_ID.to_string()),
-            Some(ClientSecret::new(CLIENT_SECRET.to_string())),
-            AuthUrl::new(AUTH_URL.to_string())?,
-            Some(TokenUrl::new(TOKEN_URL.to_string())?)
+            ClientId::new(client_id.to_string()),
+            Some(ClientSecret::new(client_secret.to_string())),
+            AuthUrl::new(auth_url.to_string())?,
+            Some(TokenUrl::new(token_url.to_string())?)
         ).set_redirect_uri(RedirectUrl::new(redirect_url)?)
             .set_auth_type(AuthType::RequestBody);
         Ok(Self { 0: client })
