@@ -8,9 +8,9 @@ const EXPIRY_LEEWAY: u64 = 10; // In seconds
 #[derive(Clone, Debug)]
 pub struct Bearer(String);
 
-impl From<&String> for Bearer {
-    fn from(item: &String) -> Self {
-        Self { 0: item.clone() }
+impl From<String> for Bearer {
+    fn from(item: String) -> Self {
+        Self { 0: item }
     }
 }
 
@@ -28,7 +28,7 @@ pub struct TokenHolder {
 
 impl TokenHolder {
     pub fn new(token: BasicTokenResponse) -> Result<Self, Box<dyn Error>> {
-        let bearer = Bearer::from(token.access_token().secret());
+        let bearer = Bearer::from(format!("Bearer {}", token.access_token().secret()));
         let expiry = token.expires_in().map(|e| e.as_secs() + get_current_time());
         Ok(Self { token, bearer, expiry })
     }

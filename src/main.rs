@@ -1,10 +1,13 @@
 use std::error::Error;
-use axum::{Json, middleware, Router};
+use axum::{middleware, Router};
+use axum::body::Body;
 use axum::extract::Extension;
-use axum::response::{IntoResponse, Response};
+use axum::http::{header, StatusCode};
+use axum::response::Response;
 use axum::routing::get;
 use axum_macros::debug_handler;
-use log::{debug, info};
+use log::{debug, info, warn};
+use crate::header::CONTENT_TYPE;
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
 use crate::oauth::OAuthState;
 use crate::oauth::token::{Bearer, TokenHolder};
@@ -20,12 +23,34 @@ const AUTH_URL : &'static str = "http://localhost:8080/realms/unite/protocol/ope
 const TOKEN_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/token";
 
 #[debug_handler]
-async fn retrieve(Extension(bearer): Extension<Bearer>) -> Response {
-    info!("--r--> Enter /retrieve");
+async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, StatusCode> {
+    info!("Enter /retrieve");
     let bearer : String = bearer.into();
-    debug!("--r--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
-    // TODO: Do something useful
-    Json("foo bar").into_response()
+    debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
+    let client = reqwest::Client::new();
+    let res = client
+        .get("https://www.strava.com/api/v3/athlete")
+        .header(reqwest::header::AUTHORIZATION, bearer)
+        .send()
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    info!("-----> Result received");
+
+    match res.text().await {
+        Ok(text) => {
+            info!("-----> {:?}", text);
+            Ok(Response::builder()
+                .status(StatusCode::OK)
+                .header(CONTENT_TYPE, "application/json")
+                .body(Body::from(text))
+                .unwrap())
+        }
+        Err(error) => {
+            warn!("-----> {:?}", error);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+    //Ok(Json("foo bar").into_response())
 }
 
 #[tokio::main]
