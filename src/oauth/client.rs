@@ -4,7 +4,7 @@ use oauth2::basic::BasicClient;
 use oauth2::{AuthorizationCode, AuthType, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, ResourceOwnerPassword, ResourceOwnerUsername, TokenResponse, TokenUrl};
 use oauth2::reqwest::async_http_client;
 use url::Url;
-use crate::auth::token;
+use crate::oauth::token;
 use crate::TokenHolder;
 
 const CLIENT_ID : &'static str = "unite-client";
@@ -69,7 +69,7 @@ impl OAuthClient {
     pub async fn refresh_token(&self, token_holder: &TokenHolder) -> TokenResult {
         debug!("Access token expired, refreshing ...");
         let token = token::validate(self.0
-            .exchange_refresh_token(&token_holder.token.refresh_token().unwrap())
+            .exchange_refresh_token(&token_holder.token().refresh_token().unwrap())
             .request_async(async_http_client)
             .await?)?;
 

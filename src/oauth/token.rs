@@ -20,8 +20,8 @@ impl From<Bearer> for String {
     }
 }
 
-pub struct TokenHolder { // TODO: Better name?
-    pub token: BasicTokenResponse, // TODO: Better use accessor, but that leads to "cannot move" complaints
+pub struct TokenHolder {
+    token: BasicTokenResponse,
     bearer: Bearer, // Bearer token extracted from the access token
     expiry: Option<u64> // Expiry date in seconds since 1970 extracted from the access token
 }
@@ -35,6 +35,9 @@ impl TokenHolder {
 
     pub fn bearer(&self) -> Bearer {
         self.bearer.clone()
+    }
+    pub fn token(&self) -> &BasicTokenResponse {
+        &self.token
     }
 }
 
