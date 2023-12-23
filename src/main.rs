@@ -18,12 +18,11 @@ mod auth;
 const HOST : &'static str = "localhost";
 const PORT : &'static str = "3000";
 
-// TODO: Note: Middleware can also return Result<Response, StatusCode> (or similar?)
 async fn oauth_middleware(State(state): State<MutexState>, mut request: Request, next: Next) -> Result<Response, StatusCode> {
     debug!("[oauth middleware] Request URI: {}", request.uri());
     // Do no apply middleware to auth callback route
     if request.uri().path().starts_with(AUTH_CALLBACK) {
-        debug!("[oauth middleware] Bypass middleware for auth callback: {}", request.uri());
+        debug!("[oauth middleware] Bypass middleware for auth callback");
         let response = next.run(request).await;
         debug!("[oauth middleware] Response status from next layer: {}", response.status());
         return Ok(response);
@@ -52,10 +51,10 @@ async fn oauth_middleware(State(state): State<MutexState>, mut request: Request,
             Ok(response)
         }
         None => {
-            debug!("[oauth middleware] NO token, build authorization URL");
+            info!("[oauth middleware] NO token, redirect to authorization endpoint");
             match (*guard).client.authorize_auth_code_grant() {
                 Ok((url, csrf_token)) => {
-                    info!("[oauth middleware] Not authorized, redirect to {}", url);
+                    debug!("[oauth middleware] Redirect to {}", url);
                     (*guard).state = Some(csrf_token.secret().clone());
                     (*guard).origin = Some(request.uri().clone());
                     Ok(Redirect::temporary(url.as_str()).into_response())
@@ -85,6 +84,7 @@ async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQue
             (*guard).state.as_ref().unwrap_or(&String::from("<null>")));
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
+    //Err(StatusCode::INSUFFICIENT_STORAGE)
     match (*guard).client.exchange_code_for_token(&query.code).await {
         Ok(token) => {
             let uri = (*guard).origin.as_ref().unwrap().to_string();
@@ -95,7 +95,7 @@ async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQue
             Ok(Redirect::temporary(uri.as_str()))
         }
         Err(error) => {
-            warn!("[oauth callback] Error: {}", error);
+            warn!("[oauth callback] Error: {:?}", error);
             Err(StatusCode::UNAUTHORIZED)
         }
     }
@@ -105,7 +105,7 @@ async fn auth_callback(State(state): State<MutexState>, query: Query<CallbackQue
 async fn retrieve(Extension(bearer): Extension<Bearer>) -> Response {
     info!("--r--> Enter /retrieve");
     let bearer : String = bearer.into();
-    info!("--r--> {}", &bearer.as_str()[..100]);
+    debug!("--r--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
     // TODO: Do something useful
     Json("foo bar").into_response()
 }
@@ -123,12 +123,14 @@ type MutexState = Arc<Mutex<SharedState>>;
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
-    let client = OAuthClient::new()?;
+    /*
+    let client = OAuthClient::new(HOST, PORT)?;
     let token = client.authorize_password_grant("fred", "fred").await?;
     auth::token::validate(token.token)?;
+    */
 
     let shared_state = Arc::new(Mutex::new(SharedState {
-        client: OAuthClient::new()?,
+        client: OAuthClient::new(HOST, PORT)?,
         state: None,
         origin: None,
         token: None
