@@ -22,35 +22,29 @@ const CLIENT_SECRET : &'static str = "totally-secret";
 const AUTH_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/auth";
 const TOKEN_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/token";
 
+fn log_error(error: reqwest::Error) -> StatusCode {
+    warn!("-----> {:?}", error);
+    StatusCode::INTERNAL_SERVER_ERROR
+}
+
 #[debug_handler]
 async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, StatusCode> {
     info!("Enter /retrieve");
     let bearer : String = bearer.into();
     debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
-    let client = reqwest::Client::new();
-    let res = client
+
+    let result : String = reqwest::Client::new()
         .get("https://www.strava.com/api/v3/athlete")
         .header(reqwest::header::AUTHORIZATION, bearer)
-        .send()
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    info!("-----> Result received");
+        .send().await.map_err(log_error)?
+        .text().await.map_err(log_error)?;
+    info!("-----> {:?}", result);
 
-    match res.text().await {
-        Ok(text) => {
-            info!("-----> {:?}", text);
-            Ok(Response::builder()
-                .status(StatusCode::OK)
-                .header(CONTENT_TYPE, "application/json")
-                .body(Body::from(text))
-                .unwrap())
-        }
-        Err(error) => {
-            warn!("-----> {:?}", error);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
-    //Ok(Json("foo bar").into_response())
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(CONTENT_TYPE, "application/json")
+        .body(Body::from(result))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 #[tokio::main]
