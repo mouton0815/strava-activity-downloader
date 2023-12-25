@@ -6,6 +6,7 @@ use axum::http::{header, StatusCode};
 use axum::response::Response;
 use axum::routing::get;
 use axum_macros::debug_handler;
+use config::{Config, File};
 use log::{debug, info, warn};
 use crate::header::CONTENT_TYPE;
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
@@ -14,13 +15,7 @@ use crate::oauth::token::{Bearer, TokenHolder};
 
 mod oauth;
 
-const HOST : &'static str = "localhost";
-const PORT : &'static str = "3000";
-
-const CLIENT_ID : &'static str = "unite-client";
-const CLIENT_SECRET : &'static str = "totally-secret";
-const AUTH_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/auth";
-const TOKEN_URL : &'static str = "http://localhost:8080/realms/unite/protocol/openid-connect/token";
+const CONFIG_YAML : &'static str = "conf/application.yaml";
 
 fn log_error(error: reqwest::Error) -> StatusCode {
     warn!("-----> {:?}", error);
@@ -43,15 +38,25 @@ async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, Stat
     Response::builder()
         .status(StatusCode::OK)
         .header(CONTENT_TYPE, "application/json")
-        .body(Body::from(result))
+        .body(Body::from("Hallo Welt!"))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
+    let config = Config::builder()
+        .add_source(File::with_name(CONFIG_YAML))
+        .build()?;
 
-    let client = OAuthClient::new(HOST, PORT, CLIENT_ID, CLIENT_SECRET, AUTH_URL, TOKEN_URL)?;
+    let host = config.get_string("server.host").unwrap_or("localhost".to_string());
+    let port = config.get_int("server.port").unwrap_or(3000) as u64;
+
+    let client = OAuthClient::new(&host, port,
+        &config.get_string("oauth.client_id").expect(CONFIG_YAML),
+        &config.get_string("oauth.client_secret").expect(CONFIG_YAML),
+        &config.get_string("oauth.auth_url").expect(CONFIG_YAML),
+        &config.get_string("oauth.token_url").expect(CONFIG_YAML))?;
     let state = OAuthState::new(client);
 
     let app = Router::new()
@@ -60,6 +65,6 @@ async fn main() -> Result<(), Box<dyn Error>>  {
         .route_layer(middleware::from_fn_with_state(state.clone(), oauth::middleware))
         .with_state(state);
 
-    let listener = tokio::net::TcpListener::bind(format!("{}:{}", HOST, PORT)).await?;
+    let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
     Ok(axum::serve(listener, app).await?)
 }
