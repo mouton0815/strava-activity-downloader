@@ -1,14 +1,13 @@
 use std::error::Error;
-use axum::{middleware, Router};
-use axum::body::Body;
+use axum::{Json, middleware, Router};
 use axum::extract::Extension;
-use axum::http::{header, StatusCode};
-use axum::response::Response;
+use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
 use axum::routing::get;
 use axum_macros::debug_handler;
 use config::{Config, File};
 use log::{debug, info, warn};
-use crate::header::CONTENT_TYPE;
+use serde::{Deserialize, Serialize};
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
 use crate::oauth::OAuthState;
 use crate::oauth::token::{Bearer, TokenHolder};
@@ -22,6 +21,16 @@ fn log_error(error: reqwest::Error) -> StatusCode {
     StatusCode::INTERNAL_SERVER_ERROR
 }
 
+#[derive(Debug, Deserialize, Serialize)]
+struct Activity {
+    name: String,
+    sport_type: String,
+    start_date_local: String, // TODO: Parse into Datetime or smth
+    kudos_count: u64
+}
+
+type Activities = Vec<Activity>;
+
 #[debug_handler]
 async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, StatusCode> {
     info!("Enter /retrieve");
@@ -29,19 +38,15 @@ async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, Stat
     debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
 
     let query = vec![("after", "1701388800")];
-    let result : String = reqwest::Client::new()
+    let result : Activities = reqwest::Client::new()
         .get("https://www.strava.com/api/v3/athlete/activities")
         .query(&query)
         .header(reqwest::header::AUTHORIZATION, bearer)
         .send().await.map_err(log_error)?
-        .text().await.map_err(log_error)?;
-    info!("-----> {:?}", result);
+        .json::<Activities>().await.map_err(log_error)?;
+    info!("--r--> {:?}", result);
 
-    Response::builder()
-        .status(StatusCode::OK)
-        .header(CONTENT_TYPE, "application/json")
-        .body(Body::from(result))
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    Ok(Json(result).into_response())
 }
 
 #[tokio::main]
