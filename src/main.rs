@@ -28,8 +28,10 @@ async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, Stat
     let bearer : String = bearer.into();
     debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
 
+    let query = vec![("after", "1701388800")];
     let result : String = reqwest::Client::new()
-        .get("https://www.strava.com/api/v3/athlete")
+        .get("https://www.strava.com/api/v3/athlete/activities")
+        .query(&query)
         .header(reqwest::header::AUTHORIZATION, bearer)
         .send().await.map_err(log_error)?
         .text().await.map_err(log_error)?;
@@ -38,7 +40,7 @@ async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, Stat
     Response::builder()
         .status(StatusCode::OK)
         .header(CONTENT_TYPE, "application/json")
-        .body(Body::from("Hallo Welt!"))
+        .body(Body::from(result))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
@@ -51,12 +53,15 @@ async fn main() -> Result<(), Box<dyn Error>>  {
 
     let host = config.get_string("server.host").unwrap_or("localhost".to_string());
     let port = config.get_int("server.port").unwrap_or(3000) as u64;
+    let scopes : Vec<String> = config.get_array("oauth.scopes").expect(CONFIG_YAML)
+        .iter().map(|v| v.clone().into_string().expect(CONFIG_YAML)).collect();
 
     let client = OAuthClient::new(&host, port,
-        &config.get_string("oauth.client_id").expect(CONFIG_YAML),
-        &config.get_string("oauth.client_secret").expect(CONFIG_YAML),
-        &config.get_string("oauth.auth_url").expect(CONFIG_YAML),
-        &config.get_string("oauth.token_url").expect(CONFIG_YAML))?;
+        config.get_string("oauth.client_id").expect(CONFIG_YAML),
+        config.get_string("oauth.client_secret").expect(CONFIG_YAML),
+        config.get_string("oauth.auth_url").expect(CONFIG_YAML),
+        config.get_string("oauth.token_url").expect(CONFIG_YAML),
+        scopes)?;
     let state = OAuthState::new(client);
 
     let app = Router::new()
