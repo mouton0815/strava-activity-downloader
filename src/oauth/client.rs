@@ -1,7 +1,7 @@
 use std::error::Error;
 use log::{debug, info};
 use oauth2::basic::BasicClient;
-use oauth2::{AuthorizationCode, AuthType, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, ResourceOwnerPassword, ResourceOwnerUsername, Scope, TokenResponse, TokenUrl};
+use oauth2::{AuthorizationCode, AuthType, AuthUrl, ClientId, ClientSecret, CsrfToken, HttpRequest, HttpResponse, RedirectUrl, ResourceOwnerPassword, ResourceOwnerUsername, Scope, TokenResponse, TokenUrl};
 use oauth2::reqwest::async_http_client;
 use url::Url;
 use crate::oauth::token;
@@ -65,7 +65,7 @@ impl OAuthClient {
         debug!("Obtain token for code {}", code);
         let token = token::validate(self.client
             .exchange_code(AuthorizationCode::new(code.clone()))
-            .request_async(async_http_client)
+            .request_async(request_wrapper)
             .await?)?;
 
         info!("Obtained token");
@@ -78,7 +78,7 @@ impl OAuthClient {
         debug!("Access token expired, refreshing ...");
         let token = token::validate(self.client
             .exchange_refresh_token(&token_holder.token().refresh_token().unwrap())
-            .request_async(async_http_client)
+            .request_async(request_wrapper)
             .await?)?;
 
         info!("Refreshed token successfully");
@@ -86,10 +86,8 @@ impl OAuthClient {
     }
 }
 
-/*
 async fn request_wrapper(request: HttpRequest) -> Result<HttpResponse, oauth2::reqwest::Error<reqwest::Error>> {
     debug!("Token request URL: {}", request.url);
     debug!("Token request body: {:?}", String::from_utf8_lossy(&request.body));
     async_http_client(request).await
 }
-*/

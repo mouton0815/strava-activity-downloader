@@ -17,8 +17,11 @@ mod oauth;
 const CONFIG_YAML : &'static str = "conf/application.yaml";
 
 fn log_error(error: reqwest::Error) -> StatusCode {
-    warn!("-----> {:?}", error);
-    StatusCode::INTERNAL_SERVER_ERROR
+    warn!("{}", error);
+    // Need to map reqwest::StatusCode to axum::http::StatusCode.
+    // Note that both types are actually aliases of http::StatusCode, but Rust complains.
+    let status = error.status().map(|e| e.as_u16()).unwrap_or(500 as u16);
+    StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -38,14 +41,15 @@ async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, Stat
     debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
 
     let query = vec![("after", "1701388800")];
-    let result : Activities = reqwest::Client::new()
+    let result = reqwest::Client::new()
         .get("https://www.strava.com/api/v3/athlete/activities")
         .query(&query)
         .header(reqwest::header::AUTHORIZATION, bearer)
         .send().await.map_err(log_error)?
+        .error_for_status().map_err(log_error)?
         .json::<Activities>().await.map_err(log_error)?;
-    info!("--r--> {:?}", result);
 
+    info!("--r--> {:?}", result);
     Ok(Json(result).into_response())
 }
 
@@ -58,7 +62,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
 
     let host = config.get_string("server.host").unwrap_or("localhost".to_string());
     let port = config.get_int("server.port").unwrap_or(3000) as u64;
-    let scopes : Vec<String> = config.get_array("oauth.scopes").expect(CONFIG_YAML)
+    let scopes : Vec<String> = config.get_array("oauth.scopes").unwrap_or(Vec::new())
         .iter().map(|v| v.clone().into_string().expect(CONFIG_YAML)).collect();
 
     let client = OAuthClient::new(&host, port,
