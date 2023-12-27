@@ -3,10 +3,12 @@ use axum::extract::{Query, Request, State};
 use axum::http::{StatusCode, Uri};
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
+use axum_macros::debug_handler;
 use log::{debug, info, warn};
 use serde::Deserialize;
+use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
-use crate::{AUTH_CALLBACK, OAuthClient, TokenHolder};
+use crate::{AUTH_CALLBACK, OAuthClient, SchedulerCommand, TokenHolder};
 
 pub mod client;
 pub mod token;
@@ -29,18 +31,32 @@ impl OAuthState {
     }
 }
 
-type MutexState = Arc<Mutex<OAuthState>>;
+//type MutexState = Arc<Mutex<OAuthState>>;
 
-pub async fn middleware(State(state): State<MutexState>, mut request: Request, next: Next) -> Result<Response, StatusCode> {
+#[derive(Clone)]
+pub struct FullState {
+    oauth: Arc<Mutex<OAuthState>>,
+    pub sender: Sender<SchedulerCommand> // TODO: Remove pub and implement send() method
+}
+
+impl FullState {
+    pub fn new(oauth: Arc<Mutex<OAuthState>>, sender: Sender<SchedulerCommand>) -> Self {
+        Self { oauth, sender }
+    }
+}
+
+//#[debug_handler]
+pub async fn middleware(State(state): State<FullState>, mut request: Request, next: Next) -> Result<Response, StatusCode> {
     debug!("[oauth middleware] Request URI: {}", request.uri());
     // Do no apply middleware to auth callback route
-    if request.uri().path().starts_with(AUTH_CALLBACK) {
+    if request.uri().path().starts_with(AUTH_CALLBACK) ||
+        request.uri().path().starts_with("/toggle") { // TODO: Remove line
         debug!("[oauth middleware] Bypass middleware for auth callback");
         let response = next.run(request).await;
         debug!("[oauth middleware] Response status from next layer: {}", response.status());
         return Ok(response);
     }
-    let mut guard = state.lock().await;
+    let mut guard = state.oauth.lock().await;
     match &(*guard).token {
         Some(token_holder) => {
             debug!("[oauth middleware] Token found");
@@ -87,9 +103,10 @@ pub struct CallbackQuery {
     state: String,
 }
 
-pub async fn callback(State(state): State<MutexState>, query: Query<CallbackQuery>) -> Result<Redirect, StatusCode> {
+#[debug_handler]
+pub async fn callback(State(state): State<FullState>, query: Query<CallbackQuery>) -> Result<Redirect, StatusCode> {
     debug!("[oauth callback] Authorized with code {}", query.code);
-    let mut guard = state.lock().await;
+    let mut guard = state.oauth.lock().await;
     if (*guard).origin.is_none()
         || (*guard).state.is_none()
         || (*guard).state.as_ref().unwrap() != &query.state {
