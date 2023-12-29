@@ -12,9 +12,9 @@ use serde::{Deserialize, Serialize};
 use tokio::{join, signal};
 use tokio::sync::broadcast;
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
-use crate::oauth::{FullState, OAuthState};
+use crate::oauth::{MutexState, OAuthState};
 use crate::oauth::token::{Bearer, TokenHolder};
-use crate::scheduler::{DeletionTask, MutexDeletionTask, SchedulerCommand, spawn_deletion_scheduler};
+use crate::scheduler::{DeletionTask, MutexDeletionTask, spawn_deletion_scheduler};
 
 mod oauth;
 mod scheduler;
@@ -62,16 +62,22 @@ async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, Stat
 }
 
 #[debug_handler]
-async fn toggle(State(state): State<FullState>) -> Result<Response, StatusCode> {
+async fn toggle(State(state): State<MutexState>) -> Result<Response, StatusCode> {
     info!("Enter /toggle");
-    let _ = state.sender.send(SchedulerCommand::Suspend); // TODO: Error handling
-    Ok("Done".into_response())
+    let mut guard = state.lock().await;
+    let old_value = (*guard).scheduler_running.clone();
+    (*guard).scheduler_running = !old_value;
+    Ok(old_value.to_string().into_response())
 }
 
 // Implementation of the task for the deletion scheduler
 impl DeletionTask<TestError> for OAuthState {
     fn delete(&mut self, _created_before: Duration) -> Result<(), TestError> {
-        info!("-----> RUN TASK");
+        if self.scheduler_running {
+            info!("-----> RUN TASK");
+        } else {
+            warn!("-----> Scheduler SUSPENDED");
+        }
         /*
         match self.delete_events(created_before) {
             Ok(_) => Ok(()),
@@ -111,14 +117,13 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let oauth_state = OAuthState::new(client);
     let deletion_task : MutexDeletionTask<TestError> = oauth_state.clone();
     let delete_scheduler = spawn_deletion_scheduler(&deletion_task, rx1, period);
-    let full_state = FullState::new(oauth_state, tx.clone()); // TODO: name, do not clone
 
     let router = Router::new()
         .route("/retrieve", get(retrieve))
         .route("/toggle", get(toggle))
         .route(AUTH_CALLBACK, get(oauth::callback))
-        .route_layer(middleware::from_fn_with_state(full_state.clone(), oauth::middleware))
-        .with_state(full_state);
+        .route_layer(middleware::from_fn_with_state(oauth_state.clone(), oauth::middleware))
+        .with_state(oauth_state);
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
     let http_server = tokio::spawn(async move {
@@ -130,9 +135,9 @@ async fn main() -> Result<(), Box<dyn Error>>  {
             .await
     });
 
-    shutdown_signal().await;
+    await_shutdown().await;
     debug!("Termination signal received");
-    tx.send(SchedulerCommand::Terminate)?;
+    tx.send(())?;
 
     let (_,_) = join!(delete_scheduler, http_server);
     info!("Deletion scheduler terminated");
@@ -142,7 +147,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
 }
 
 // See https://github.com/tokio-rs/axum/blob/main/examples/graceful-shutdown/src/main.rs
-async fn shutdown_signal() {
+async fn await_shutdown() {
     let ctrl_c = async {
         signal::ctrl_c()
             .await

@@ -6,7 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.75"
 #axum = "0.7"
-axum = { git = "https://github.com/tokio-rs/axum" } # TODO: Use version!
+axum = { git = "https://github.com/tokio-rs/axum" } # TODO: Use version 0.7.3 once it is out!
 axum-macros = "0.4.0"
 config = "0.13.4"
 env_logger = "0.10.1"

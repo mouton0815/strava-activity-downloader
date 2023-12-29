@@ -7,13 +7,6 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time;
 
-#[derive(Clone, Debug)]
-pub enum SchedulerCommand {
-    Suspend,
-    Resume,
-    Terminate
-}
-
 pub trait DeletionTask<E> {
     fn delete(&mut self, created_before: Duration) -> Result<(), E>;
 }
@@ -21,7 +14,7 @@ pub trait DeletionTask<E> {
 pub type MutexDeletionTask<E> = Arc<Mutex<dyn DeletionTask<E> + Send>>;
 
 // Must be async as required by tokio::select!
-async fn repeat<E: Debug>(task: &MutexDeletionTask<E>, period: Duration, mut rx: Receiver<SchedulerCommand>) {
+async fn repeat<E: Debug>(task: &MutexDeletionTask<E>, period: Duration, mut rx: Receiver<()>) {
     let mut interval = time::interval(period);
     loop {
         tokio::select! {
@@ -32,8 +25,7 @@ async fn repeat<E: Debug>(task: &MutexDeletionTask<E>, period: Duration, mut rx:
                     break;
                 }
             },
-            value = rx.recv() => {
-                info!("-----> {:?}", value.unwrap());
+            _ = rx.recv() => {
                 info!("Termination signal received, leave deletion scheduler");
                 break;
             }
@@ -41,7 +33,7 @@ async fn repeat<E: Debug>(task: &MutexDeletionTask<E>, period: Duration, mut rx:
     }
 }
 
-pub fn spawn_deletion_scheduler<E: Debug + 'static>(task: &MutexDeletionTask<E>, rx: Receiver<SchedulerCommand>, period: Duration) -> JoinHandle<()> {
+pub fn spawn_deletion_scheduler<E: Debug + 'static>(task: &MutexDeletionTask<E>, rx: Receiver<()>, period: Duration) -> JoinHandle<()> {
     info!("Spawn deletion scheduler");
     let task = task.clone();
     tokio::spawn(async move {
