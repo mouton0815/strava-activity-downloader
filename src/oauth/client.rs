@@ -18,7 +18,7 @@ pub struct OAuthClient {
 
 impl OAuthClient {
     pub fn new(host: &str,
-               port: u64,
+               port: u16,
                client_id: String,
                client_secret: String,
                auth_url: String,

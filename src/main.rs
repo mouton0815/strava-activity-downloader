@@ -9,6 +9,7 @@ use axum_macros::debug_handler;
 use config::{Config, File};
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
+use tokio::{join, signal};
 use tokio::sync::broadcast;
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
 use crate::oauth::{FullState, OAuthState};
@@ -44,7 +45,7 @@ async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, Stat
     info!("Enter /retrieve");
     let bearer : String = bearer.into();
     debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
-
+    /*
     // let query = vec![("after", "1701388800")];
     let result = reqwest::Client::new()
         .get("https://www.strava.com/api/v3/athlete/activities")
@@ -56,12 +57,14 @@ async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, Stat
 
     info!("--r--> {:?}", result);
     Ok(Json(result).into_response())
+    */
+    Ok("Hallo Welt".into_response())
 }
 
 #[debug_handler]
 async fn toggle(State(state): State<FullState>) -> Result<Response, StatusCode> {
     info!("Enter /toggle");
-    let _ = state.sender.send(SchedulerCommand::Start); // TODO: Error handling
+    let _ = state.sender.send(SchedulerCommand::Suspend); // TODO: Error handling
     Ok("Done".into_response())
 }
 
@@ -90,7 +93,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
         .build()?;
 
     let host = config.get_string("server.host").unwrap_or("localhost".to_string());
-    let port = config.get_int("server.port").unwrap_or(3000) as u64;
+    let port = config.get_int("server.port").unwrap_or(3000) as u16;
     let scopes : Vec<String> = config.get_array("oauth.scopes").unwrap_or(Vec::new())
         .iter().map(|v| v.clone().into_string().expect(CONFIG_YAML)).collect();
 
@@ -101,14 +104,16 @@ async fn main() -> Result<(), Box<dyn Error>>  {
         config.get_string("oauth.token_url").expect(CONFIG_YAML),
         scopes)?;
 
-    let (tx, rx) = broadcast::channel(1);
+    let (tx, rx1) = broadcast::channel(1);
+    let mut rx2 = tx.subscribe();
+
     let period = Duration::from_secs(5);
     let oauth_state = OAuthState::new(client);
     let deletion_task : MutexDeletionTask<TestError> = oauth_state.clone();
-    let delete_scheduler = spawn_deletion_scheduler(&deletion_task, rx, period);
-    let full_state = FullState::new(oauth_state, tx); // TODO: name
+    let delete_scheduler = spawn_deletion_scheduler(&deletion_task, rx1, period);
+    let full_state = FullState::new(oauth_state, tx.clone()); // TODO: name, do not clone
 
-    let app = Router::new()
+    let router = Router::new()
         .route("/retrieve", get(retrieve))
         .route("/toggle", get(toggle))
         .route(AUTH_CALLBACK, get(oauth::callback))
@@ -116,5 +121,47 @@ async fn main() -> Result<(), Box<dyn Error>>  {
         .with_state(full_state);
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-    Ok(axum::serve(listener, app).await?)
+    let http_server = tokio::spawn(async move {
+        axum::serve(listener, router)
+            .with_graceful_shutdown(async move {
+                rx2.recv().await.unwrap();
+                debug!("Termination signal received, leave HTTP server");
+            })
+            .await
+    });
+
+    shutdown_signal().await;
+    debug!("Termination signal received");
+    tx.send(SchedulerCommand::Terminate)?;
+
+    let (_,_) = join!(delete_scheduler, http_server);
+    info!("Deletion scheduler terminated");
+    info!("HTTP Server terminated");
+
+    Ok(())
+}
+
+// See https://github.com/tokio-rs/axum/blob/main/examples/graceful-shutdown/src/main.rs
+async fn shutdown_signal() {
+    let ctrl_c = async {
+        signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C handler");
+    };
+
+    #[cfg(unix)]
+    let terminate = async {
+        signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("Failed to install signal handler")
+            .recv()
+            .await;
+    };
+
+    #[cfg(not(unix))]
+    let terminate = std::future::pending::<()>();
+
+    tokio::select! {
+        _ = ctrl_c => {},
+        _ = terminate => {},
+    }
 }

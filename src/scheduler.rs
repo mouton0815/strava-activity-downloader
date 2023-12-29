@@ -9,8 +9,9 @@ use tokio::time;
 
 #[derive(Clone, Debug)]
 pub enum SchedulerCommand {
-    Start,
-    Stop
+    Suspend,
+    Resume,
+    Terminate
 }
 
 pub trait DeletionTask<E> {
