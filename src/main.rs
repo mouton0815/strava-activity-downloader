@@ -1,6 +1,6 @@
 use std::error::Error;
 use std::time::Duration;
-use axum::{Json, middleware, Router};
+use axum::{middleware, Router};
 use axum::extract::{Extension, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{join, signal};
 use tokio::sync::broadcast;
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
-use crate::oauth::{MutexState, OAuthState};
+use crate::oauth::{MutexRestState, RestState};
 use crate::oauth::token::{Bearer, TokenHolder};
 use crate::scheduler::{DeletionTask, MutexDeletionTask, spawn_deletion_scheduler};
 
@@ -62,7 +62,7 @@ async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, Stat
 }
 
 #[debug_handler]
-async fn toggle(State(state): State<MutexState>) -> Result<Response, StatusCode> {
+async fn toggle(State(state): State<MutexRestState>) -> Result<Response, StatusCode> {
     info!("Enter /toggle");
     let mut guard = state.lock().await;
     let old_value = (*guard).scheduler_running.clone();
@@ -71,7 +71,7 @@ async fn toggle(State(state): State<MutexState>) -> Result<Response, StatusCode>
 }
 
 // Implementation of the task for the deletion scheduler
-impl DeletionTask<TestError> for OAuthState {
+impl DeletionTask<TestError> for RestState {
     fn delete(&mut self, _created_before: Duration) -> Result<(), TestError> {
         if self.scheduler_running {
             info!("-----> RUN TASK");
@@ -114,16 +114,16 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let mut rx2 = tx.subscribe();
 
     let period = Duration::from_secs(5);
-    let oauth_state = OAuthState::new(client);
-    let deletion_task : MutexDeletionTask<TestError> = oauth_state.clone();
+    let rest_state = RestState::new(client, true);
+    let deletion_task : MutexDeletionTask<TestError> = rest_state.clone();
     let delete_scheduler = spawn_deletion_scheduler(&deletion_task, rx1, period);
 
     let router = Router::new()
         .route("/retrieve", get(retrieve))
         .route("/toggle", get(toggle))
         .route(AUTH_CALLBACK, get(oauth::callback))
-        .route_layer(middleware::from_fn_with_state(oauth_state.clone(), oauth::middleware))
-        .with_state(oauth_state);
+        .route_layer(middleware::from_fn_with_state(rest_state.clone(), oauth::middleware))
+        .with_state(rest_state);
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
     let http_server = tokio::spawn(async move {

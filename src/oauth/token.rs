@@ -1,7 +1,7 @@
-use std::error::Error;
 use std::time::SystemTime;
 use oauth2::TokenResponse;
 use oauth2::basic::BasicTokenResponse;
+use thiserror::Error;
 
 const EXPIRY_LEEWAY: u64 = 10; // In seconds
 
@@ -27,10 +27,10 @@ pub struct TokenHolder {
 }
 
 impl TokenHolder {
-    pub fn new(token: BasicTokenResponse) -> Result<Self, Box<dyn Error>> {
+    pub fn new(token: BasicTokenResponse) -> Self {
         let bearer = Bearer::from(format!("Bearer {}", token.access_token().secret()));
         let expiry = token.expires_in().map(|e| e.as_secs() + get_current_time());
-        Ok(Self { token, bearer, expiry })
+        Self { token, bearer, expiry }
     }
 
     pub fn bearer(&self) -> Bearer {
@@ -49,9 +49,15 @@ fn get_current_time() -> u64 {
     SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs() // Cannot panic
 }
 
-pub fn validate(token: BasicTokenResponse) -> Result<BasicTokenResponse, Box<dyn Error>> {
+#[derive(Error, Debug)]
+pub enum TokenError {
+    #[error("Token returned from auth server does not contain a refresh token")]
+    RefreshTokenMissing
+}
+
+pub fn validate(token: BasicTokenResponse) -> Result<BasicTokenResponse, TokenError> {
     if token.refresh_token().is_none() {
-        return Err("Missing refresh token from auth server token endpoint".into())
+        return Err(TokenError::RefreshTokenMissing)
     }
     Ok(token)
 }

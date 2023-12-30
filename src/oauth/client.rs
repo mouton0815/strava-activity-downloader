@@ -1,19 +1,31 @@
 use std::error::Error;
-use log::{debug, info};
+use axum::http::Uri;
+use log::{debug, info, warn};
 use oauth2::basic::BasicClient;
 use oauth2::{AuthorizationCode, AuthType, AuthUrl, ClientId, ClientSecret, CsrfToken, HttpRequest, HttpResponse, RedirectUrl, ResourceOwnerPassword, ResourceOwnerUsername, Scope, TokenResponse, TokenUrl};
 use oauth2::reqwest::async_http_client;
 use url::Url;
 use crate::oauth::token;
-use crate::TokenHolder;
+use crate::{Bearer, TokenHolder};
 
+// TODO: Better pass as ctor argument?
 pub const AUTH_CALLBACK : &'static str = "/auth_callback";
 
-type TokenResult = Result<TokenHolder, Box<dyn Error>>;
+// Send is necessary to send errors between threads (needed by axum middleware):
+// https://users.rust-lang.org/t/axum-middleware-trait-bound-issue-when-invoking-a-function-returning-boxed-error-result/100052/4
+// Sync is necessary for From/Into convenience:
+// https://users.rust-lang.org/t/convert-box-dyn-error-to-box-dyn-error-send/48856
+type BoxSendError = Box<dyn Error + Send + Sync>;
+type TokenResult = Result<TokenHolder, BoxSendError>;
+type UriResult = Result<Uri, BoxSendError>;
+type BearerResult = Result<Option<Bearer>, BoxSendError>;
 
 pub struct OAuthClient {
     client: BasicClient,
-    scopes: Vec<String>
+    scopes: Vec<String>,
+    state: Option<String>,
+    origin: Option<Uri>,   // REST endpoint that triggered the authentication
+    token: Option<TokenHolder>,
 }
 
 impl OAuthClient {
@@ -24,7 +36,7 @@ impl OAuthClient {
                auth_url: String,
                token_url: String,
                scopes: Vec<String>,
-    ) -> Result<Self, Box<dyn Error>> {
+    ) -> Result<OAuthClient, Box<dyn Error>> {
         let redirect_url = format!("http://{}:{}{}", host, port, AUTH_CALLBACK);
         let client = BasicClient::new(
             ClientId::new(client_id),
@@ -33,7 +45,8 @@ impl OAuthClient {
             Some(TokenUrl::new(token_url.to_string())?)
         ).set_redirect_uri(RedirectUrl::new(redirect_url)?)
             .set_auth_type(AuthType::RequestBody);
-        Ok(Self { client, scopes })
+
+        Ok(Self { client, scopes, state: None, origin: None, token: None })
     }
 
     #[allow(dead_code)]
@@ -46,10 +59,10 @@ impl OAuthClient {
             .request_async(async_http_client)
             .await?;
 
-        TokenHolder::new(token)
+        Ok(TokenHolder::new(token))
     }
 
-    pub fn authorize_auth_code_grant(&self) -> Result<(Url, CsrfToken), Box<dyn Error>> {
+    pub fn authorize_auth_code_grant(&mut self, request_uri: &Uri) -> Url {
         // Transform Vec<String> to Vec<Scope>.
         // Note that cloning is needed anyway because Client.add_scopes() moves its argument.
         let scopes : Vec<Scope> = self.scopes.iter().map(|s| Scope::new(s.clone())).collect();
@@ -58,23 +71,72 @@ impl OAuthClient {
             .add_scopes(scopes.into_iter())
             .url();
         debug!("State is {}", csrf_token.secret());
-        Ok((auth_url, csrf_token))
+        self.state = Some(csrf_token.secret().clone());
+        self.origin = Some(request_uri.clone());
+        auth_url
     }
 
-    pub async fn exchange_code_for_token(&self, code: &String) -> TokenResult {
+    pub async fn callback_auth_code_grant(&mut self, code: &str, state: &str) -> UriResult {
+        debug!("Authorized with code {}", code);
+        if self.origin.is_none() || self.state.is_none() || self.state.as_ref().unwrap() != state {
+            warn!("Received state {} does not match expected state {}", state,
+            self.state.as_ref().unwrap_or(&String::from("<null>")));
+            return Err("OAuth state does not match".into());
+        }
+        match self.exchange_code_for_token(code).await {
+            Ok(token) => {
+                let request_uri = self.origin.clone().unwrap();
+                self.token = Some(token);
+                self.state = None;
+                self.origin = None;
+                Ok(request_uri)
+            }
+            Err(error) => {
+                warn!("Error: {:?}", error);
+                Err(error)
+            }
+        }
+
+    }
+
+    async fn exchange_code_for_token(&self, code: &str) -> TokenResult {
         debug!("Obtain token for code {}", code);
         let token = token::validate(self.client
-            .exchange_code(AuthorizationCode::new(code.clone()))
+            .exchange_code(AuthorizationCode::new(code.to_string()))
             .request_async(request_wrapper)
             .await?)?;
 
         info!("Obtained token");
         debug!("{:?}", token);
 
-        TokenHolder::new(token)
+        Ok(TokenHolder::new(token))
     }
 
-    pub async fn refresh_token(&self, token_holder: &TokenHolder) -> TokenResult {
+    // TODO: Documentation
+    // https://users.rust-lang.org/t/axum-middleware-trait-bound-issue-when-invoking-a-function-returning-boxed-error-result/100052/5
+    pub async fn get_bearer(&mut self) -> BearerResult {
+        match self.token.as_ref() {
+            Some(token_holder) => {
+                if token::is_expired(token_holder) {
+                    match self.refresh_token(token_holder).await {
+                        Ok(token) => {
+                            self.token = Some(token);
+                        }
+                        Err(error) => {
+                            warn!("Error: {}", error);
+                            return Err(error);
+                        }
+                    }
+                }
+                Ok(Some(self.token.as_ref().expect("Missing token").bearer()))
+            }
+            None => {
+                Ok(None)
+            }
+        }
+    }
+
+    async fn refresh_token(&self, token_holder: &TokenHolder) -> TokenResult {
         debug!("Access token expired, refreshing ...");
         let token = token::validate(self.client
             .exchange_refresh_token(&token_holder.token().refresh_token().unwrap())
@@ -82,7 +144,7 @@ impl OAuthClient {
             .await?)?;
 
         info!("Refreshed token successfully");
-        TokenHolder::new(token)
+        Ok(TokenHolder::new(token))
     }
 }
 
