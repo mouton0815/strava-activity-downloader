@@ -14,7 +14,7 @@ pub mod token;
 
 // TODO: Move state and middleware to rest package
 pub struct RestState {
-    oauth: OAuthClient,
+    pub oauth: OAuthClient,
     pub scheduler_running: bool // TODO: Make "pub" private and use functions instead?
 }
 

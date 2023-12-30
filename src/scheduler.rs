@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::fmt::Debug;
 use std::sync::Arc;
 use log::{info, warn};
@@ -7,8 +8,9 @@ use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time;
 
+#[async_trait]
 pub trait DeletionTask<E> {
-    fn delete(&mut self, created_before: Duration) -> Result<(), E>;
+    async fn delete(&mut self, created_before: Duration) -> Result<(), E>;
 }
 
 pub type MutexDeletionTask<E> = Arc<Mutex<dyn DeletionTask<E> + Send>>;
@@ -20,7 +22,7 @@ async fn repeat<E: Debug>(task: &MutexDeletionTask<E>, period: Duration, mut rx:
         tokio::select! {
             _ = interval.tick() => {
                 let mut task = task.lock().await;
-                if let Err(e) = task.delete(period) {
+                if let Err(e) = task.delete(period).await {
                     warn!("Deletion task failed: {:?}, leave scheduler", e);
                     break;
                 }

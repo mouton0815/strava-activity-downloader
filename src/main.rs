@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use std::error::Error;
 use std::time::Duration;
 use axum::{middleware, Router};
@@ -9,6 +10,7 @@ use axum_macros::debug_handler;
 use config::{Config, File};
 use log::{debug, info, warn};
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 use tokio::{join, signal};
 use tokio::sync::broadcast;
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
@@ -71,25 +73,41 @@ async fn toggle(State(state): State<MutexRestState>) -> Result<Response, StatusC
 }
 
 // Implementation of the task for the deletion scheduler
-impl DeletionTask<TestError> for RestState {
-    fn delete(&mut self, _created_before: Duration) -> Result<(), TestError> {
+#[async_trait]
+impl DeletionTask<TaskError> for RestState {
+    async fn delete(&mut self, _created_before: Duration) -> Result<(), TaskError> {
         if self.scheduler_running {
             info!("-----> RUN TASK");
+            match self.oauth.get_bearer().await {
+                Ok(bearer) => {
+                    match bearer {
+                        Some(bearer) => {
+                            let bearer : String = bearer.into();
+                            debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
+                        }
+                        None => {
+                            warn!("-----> Scheduler SUSPENDED by missing token");
+                        }
+                    }
+                    Ok(())
+                }
+                Err(error) => {
+                    warn!("{}", error);
+                    Err(TaskError::TokenError)
+                }
+            }
         } else {
-            warn!("-----> Scheduler SUSPENDED");
+            warn!("-----> Scheduler SUSPENDED by toggle");
+            Ok(())
         }
-        /*
-        match self.delete_events(created_before) {
-            Ok(_) => Ok(()),
-            Err(e) => Err(e)
-        }
-        */
-        Ok(())
     }
 }
 
-#[derive(Debug)]
-enum TestError {}
+#[derive(Error, Debug)]
+pub enum TaskError {
+    #[error("Cannot obtain or refresh token")]
+    TokenError
+}
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>>  {
@@ -115,7 +133,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
 
     let period = Duration::from_secs(5);
     let rest_state = RestState::new(client, true);
-    let deletion_task : MutexDeletionTask<TestError> = rest_state.clone();
+    let deletion_task : MutexDeletionTask<TaskError> = rest_state.clone();
     let delete_scheduler = spawn_deletion_scheduler(&deletion_task, rx1, period);
 
     let router = Router::new()
