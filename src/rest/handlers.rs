@@ -48,8 +48,8 @@ pub async fn retrieve(State(mut _state): State<MutexSharedState>, Extension(bear
 }
 
 #[debug_handler]
-pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Response, StatusCode> {
-    info!("Enter /toggle");
+pub async fn toggle_scheduler(State(state): State<MutexSharedState>) -> Result<Response, StatusCode> {
+    info!("Enter /toggle_scheduler");
     let mut guard = state.lock().await;
     let old_value = (*guard).scheduler_running.clone();
     (*guard).scheduler_running = !old_value;

@@ -4,17 +4,18 @@ use log::{debug, info};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast::Receiver;
 use tokio::task::JoinHandle;
-use crate::{AUTH_CALLBACK, MutexSharedState, oauth};
-use crate::rest::handlers::{retrieve, toggle};
+use crate::{AUTH_CALLBACK, MutexSharedState};
+use crate::rest::handlers::{retrieve, toggle_scheduler};
+use crate::rest::oauth::{callback, middleware};
 
 pub fn spawn_http_server(listener: TcpListener, state: MutexSharedState, mut rx: Receiver<()>) -> JoinHandle<()> {
     info!("Spawn HTTP server");
 
     let router = Router::new()
         .route("/retrieve", get(retrieve))
-        .route("/toggle", get(toggle))
-        .route(AUTH_CALLBACK, get(oauth::callback))
-        .route_layer(middleware::from_fn_with_state(state.clone(), oauth::middleware))
+        .route("/toggle", get(toggle_scheduler))
+        .route(AUTH_CALLBACK, get(callback))
+        .route_layer(middleware::from_fn_with_state(state.clone(), middleware))
         .with_state(state);
 
     tokio::spawn(async move {
