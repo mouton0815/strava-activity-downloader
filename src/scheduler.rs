@@ -1,44 +1,57 @@
-use async_trait::async_trait;
-use std::fmt::Debug;
-use std::sync::Arc;
-use log::{info, warn};
+use log::{debug, info, warn};
 use std::time::Duration;
+use axum::BoxError;
 use tokio::sync::broadcast::Receiver;
-use tokio::sync::Mutex;
 use tokio::task::JoinHandle;
 use tokio::time;
+use crate::{Bearer, MutexSharedState};
 
-#[async_trait] // TODO: Better use RestState directly and remove crate async-trait
-pub trait DeletionTask<E> {
-    async fn delete(&mut self, created_before: Duration) -> Result<(), E>;
+async fn task(bearer: Bearer) -> Result<(), BoxError> { // TODO: Return an error enum?
+    let bearer : String = bearer.into();
+    debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
+    Ok(())
 }
 
-pub type MutexDeletionTask<E> = Arc<Mutex<dyn DeletionTask<E> + Send>>;
+async fn authorize(state: MutexSharedState) -> Result<(), BoxError> { // TODO: Return an error enum?
+    let mut guard = state.lock().await;
+    if (*guard).scheduler_running {
+        match (*guard).oauth.get_bearer().await? {
+            Some(bearer) => {
+                task(bearer).await?;
+            }
+            None => {
+                // There is no way for the scheduler to do an OAuth auth code flow.
+                debug!("Not authorized yet, skip task execution");
+            }
+        }
+    } else {
+        debug!("Scheduler disabled, skip task execution");
+    }
+    Ok(())
+}
 
 // Must be async as required by tokio::select!
-async fn repeat<E: Debug>(task: &MutexDeletionTask<E>, period: Duration, mut rx: Receiver<()>) {
+async fn repeat(state: MutexSharedState, period: Duration, mut rx: Receiver<()>) {
     let mut interval = time::interval(period);
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                let mut task = task.lock().await;
-                if let Err(e) = task.delete(period).await {
-                    warn!("Deletion task failed: {:?}, leave scheduler", e);
+                if let Err(e) = authorize(state.clone()).await {
+                    warn!("Task failed: {:?}, leave scheduler", e);
                     break;
                 }
             },
             _ = rx.recv() => {
-                info!("Termination signal received, leave deletion scheduler");
+                info!("Termination signal received, leave scheduler");
                 break;
             }
         }
     }
 }
 
-pub fn spawn_deletion_scheduler<E: Debug + 'static>(task: &MutexDeletionTask<E>, rx: Receiver<()>, period: Duration) -> JoinHandle<()> {
-    info!("Spawn deletion scheduler");
-    let task = task.clone();
+pub fn spawn_scheduler(state: MutexSharedState, rx: Receiver<()>, period: Duration) -> JoinHandle<()> {
+    info!("Spawn scheduler");
     tokio::spawn(async move {
-        repeat(&task, period, rx).await;
+        repeat(state, period, rx).await;
     })
 }

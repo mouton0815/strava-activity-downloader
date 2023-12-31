@@ -1,4 +1,9 @@
 use std::error::Error;
+// Send is necessary to send errors between threads (needed by axum middleware):
+// https://users.rust-lang.org/t/axum-middleware-trait-bound-issue-when-invoking-a-function-returning-boxed-error-result/100052/4
+// Sync is necessary for From/Into convenience:
+// https://users.rust-lang.org/t/convert-box-dyn-error-to-box-dyn-error-send/48856
+use axum::BoxError;
 use axum::http::Uri;
 use log::{debug, info, warn};
 use oauth2::basic::BasicClient;
@@ -11,14 +16,9 @@ use crate::{Bearer, TokenHolder};
 // TODO: Better pass as ctor argument?
 pub const AUTH_CALLBACK : &'static str = "/auth_callback";
 
-// Send is necessary to send errors between threads (needed by axum middleware):
-// https://users.rust-lang.org/t/axum-middleware-trait-bound-issue-when-invoking-a-function-returning-boxed-error-result/100052/4
-// Sync is necessary for From/Into convenience:
-// https://users.rust-lang.org/t/convert-box-dyn-error-to-box-dyn-error-send/48856
-type BoxSendError = Box<dyn Error + Send + Sync>;
-type TokenResult = Result<TokenHolder, BoxSendError>;
-type UriResult = Result<Uri, BoxSendError>;
-type BearerResult = Result<Option<Bearer>, BoxSendError>;
+type TokenResult = Result<TokenHolder, BoxError>;
+type UriResult = Result<Uri, BoxError>;
+type BearerResult = Result<Option<Bearer>, BoxError>;
 
 pub struct OAuthClient {
     client: BasicClient,

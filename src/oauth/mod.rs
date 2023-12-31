@@ -5,7 +5,7 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum_macros::debug_handler;
 use log::{debug, info, warn};
 use serde::Deserialize;
-use crate::{AUTH_CALLBACK, OAuthClient};
+use crate::AUTH_CALLBACK;
 use crate::state::MutexSharedState;
 
 pub mod client;

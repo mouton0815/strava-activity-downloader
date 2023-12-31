@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use std::error::Error;
 use std::time::Duration;
 use axum::{middleware, Router};
@@ -15,7 +14,7 @@ use tokio::{join, signal};
 use tokio::sync::broadcast;
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
 use crate::oauth::token::{Bearer, TokenHolder};
-use crate::scheduler::{DeletionTask, MutexDeletionTask, spawn_deletion_scheduler};
+use crate::scheduler::spawn_scheduler;
 use crate::state::{MutexSharedState, SharedState};
 
 mod oauth;
@@ -73,37 +72,6 @@ async fn toggle(State(state): State<MutexSharedState>) -> Result<Response, Statu
     Ok(old_value.to_string().into_response())
 }
 
-// Implementation of the task for the deletion scheduler
-#[async_trait]
-impl DeletionTask<TaskError> for SharedState {
-    async fn delete(&mut self, _created_before: Duration) -> Result<(), TaskError> {
-        if self.scheduler_running {
-            info!("-----> RUN TASK");
-            match self.oauth.get_bearer().await {
-                Ok(bearer) => {
-                    match bearer {
-                        Some(bearer) => {
-                            let bearer : String = bearer.into();
-                            debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
-                        }
-                        None => {
-                            warn!("-----> Scheduler SUSPENDED by missing token");
-                        }
-                    }
-                    Ok(())
-                }
-                Err(error) => {
-                    warn!("{}", error);
-                    Err(TaskError::TokenError)
-                }
-            }
-        } else {
-            warn!("-----> Scheduler SUSPENDED by toggle");
-            Ok(())
-        }
-    }
-}
-
 #[derive(Error, Debug)]
 pub enum TaskError {
     #[error("Cannot obtain or refresh token")]
@@ -132,24 +100,23 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let (tx, rx1) = broadcast::channel(1);
     let mut rx2 = tx.subscribe();
 
-    let period = Duration::from_secs(5);
-    let rest_state = SharedState::new(client, true);
-    let deletion_task : MutexDeletionTask<TaskError> = rest_state.clone();
-    let delete_scheduler = spawn_deletion_scheduler(&deletion_task, rx1, period);
+    let period = Duration::from_secs(10);
+    let state = SharedState::new(client, true);
+    let delete_scheduler = spawn_scheduler(state.clone(), rx1, period);
 
     let router = Router::new()
         .route("/retrieve", get(retrieve))
         .route("/toggle", get(toggle))
         .route(AUTH_CALLBACK, get(oauth::callback))
-        .route_layer(middleware::from_fn_with_state(rest_state.clone(), oauth::middleware))
-        .with_state(rest_state);
+        .route_layer(middleware::from_fn_with_state(state.clone(), oauth::middleware))
+        .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
     let http_server = tokio::spawn(async move {
         axum::serve(listener, router)
             .with_graceful_shutdown(async move {
                 rx2.recv().await.unwrap();
-                debug!("Termination signal received, leave HTTP server");
+                info!("Termination signal received, leave HTTP server");
             })
             .await
     });

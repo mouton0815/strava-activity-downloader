@@ -5,7 +5,6 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.75"
-async-trait = "0.1.75"
 axum = "0.7"
 axum-macros = "0.4"
 config = "0.13.4"
