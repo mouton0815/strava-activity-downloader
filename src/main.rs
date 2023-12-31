@@ -43,7 +43,7 @@ struct Activity {
 type Activities = Vec<Activity>;
 
 #[debug_handler]
-async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, StatusCode> {
+async fn retrieve(State(mut _state): State<MutexSharedState>, Extension(bearer): Extension<Bearer>) -> Result<Response, StatusCode> {
     info!("Enter /retrieve");
     let bearer : String = bearer.into();
     debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);

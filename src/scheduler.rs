@@ -4,20 +4,20 @@ use axum::BoxError;
 use tokio::sync::broadcast::Receiver;
 use tokio::task::JoinHandle;
 use tokio::time;
-use crate::{Bearer, MutexSharedState};
+use crate::{Bearer, MutexSharedState, SharedState};
 
-async fn task(bearer: Bearer) -> Result<(), BoxError> { // TODO: Return an error enum?
+async fn task(_state: &mut SharedState, bearer: Bearer) -> Result<(), BoxError> {
     let bearer : String = bearer.into();
     debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
     Ok(())
 }
 
-async fn authorize(state: MutexSharedState) -> Result<(), BoxError> { // TODO: Return an error enum?
+async fn authorize(state: MutexSharedState) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
     if (*guard).scheduler_running {
         match (*guard).oauth.get_bearer().await? {
             Some(bearer) => {
-                task(bearer).await?;
+                task(&mut *guard, bearer).await?;
             }
             None => {
                 // There is no way for the scheduler to do an OAuth auth code flow.
