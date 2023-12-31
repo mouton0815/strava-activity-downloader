@@ -14,6 +14,7 @@ mod oauth;
 mod state;
 mod rest;
 mod scheduler;
+mod database;
 
 const CONFIG_YAML : &'static str = "conf/application.yaml";
 
@@ -47,7 +48,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let http_server = spawn_http_server(listener, state.clone(), rx2);
 
     await_shutdown().await;
-    debug!("Termination signal received");
+    info!("Termination signal received");
     tx.send(())?;
 
     let (_,_) = join!(scheduler, http_server);
