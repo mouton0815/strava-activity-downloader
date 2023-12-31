@@ -10,7 +10,7 @@ pub struct SharedState {
 pub type MutexSharedState = Arc<Mutex<SharedState>>;
 
 impl SharedState {
-    pub fn new(oauth: OAuthClient, scheduler_running: bool) -> MutexSharedState {
-        Arc::new(Mutex::new(Self { oauth, scheduler_running }))
+    pub fn new(oauth: OAuthClient) -> MutexSharedState {
+        Arc::new(Mutex::new(Self { oauth, scheduler_running: false }))
     }
 }

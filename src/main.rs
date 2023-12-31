@@ -101,7 +101,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let mut rx2 = tx.subscribe();
 
     let period = Duration::from_secs(10);
-    let state = SharedState::new(client, true);
+    let state = SharedState::new(client);
     let delete_scheduler = spawn_scheduler(state.clone(), rx1, period);
 
     let router = Router::new()
