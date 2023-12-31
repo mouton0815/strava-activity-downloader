@@ -1,4 +1,3 @@
-use std::sync::Arc;
 use axum::extract::{Query, Request, State};
 use axum::http::StatusCode;
 use axum::middleware::Next;
@@ -6,28 +5,14 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum_macros::debug_handler;
 use log::{debug, info, warn};
 use serde::Deserialize;
-use tokio::sync::Mutex;
 use crate::{AUTH_CALLBACK, OAuthClient};
+use crate::state::MutexSharedState;
 
 pub mod client;
 pub mod token;
 
-// TODO: Move state and middleware to rest package
-pub struct RestState {
-    pub oauth: OAuthClient,
-    pub scheduler_running: bool // TODO: Make "pub" private and use functions instead?
-}
-
-pub type MutexRestState = Arc<Mutex<RestState>>;
-
-impl RestState {
-    pub fn new(oauth: OAuthClient, scheduler_running: bool) -> MutexRestState {
-        Arc::new(Mutex::new(Self { oauth, scheduler_running }))
-    }
-}
-
-
-pub async fn middleware(State(state): State<MutexRestState>, mut request: Request, next: Next) -> Result<Response, StatusCode> {
+// TODO: Move middleware to rest package
+pub async fn middleware(State(state): State<MutexSharedState>, mut request: Request, next: Next) -> Result<Response, StatusCode> {
     debug!("[oauth middleware] Request URI: {}", request.uri());
     // Do no apply middleware to auth callback route
     if request.uri().path().starts_with(AUTH_CALLBACK) ||
@@ -71,7 +56,7 @@ pub struct CallbackQuery {
 }
 
 #[debug_handler]
-pub async fn callback(State(state): State<MutexRestState>, query: Query<CallbackQuery>) -> Result<Redirect, StatusCode> {
+pub async fn callback(State(state): State<MutexSharedState>, query: Query<CallbackQuery>) -> Result<Redirect, StatusCode> {
     debug!("[oauth callback] Authorized with code {}", query.code);
     let mut guard = state.lock().await;
     match (*guard).oauth.callback_auth_code_grant(&query.code, &query.state).await {

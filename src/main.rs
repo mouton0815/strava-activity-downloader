@@ -14,11 +14,12 @@ use thiserror::Error;
 use tokio::{join, signal};
 use tokio::sync::broadcast;
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
-use crate::oauth::{MutexRestState, RestState};
 use crate::oauth::token::{Bearer, TokenHolder};
 use crate::scheduler::{DeletionTask, MutexDeletionTask, spawn_deletion_scheduler};
+use crate::state::{MutexSharedState, SharedState};
 
 mod oauth;
+mod state;
 mod scheduler;
 
 const CONFIG_YAML : &'static str = "conf/application.yaml";
@@ -64,7 +65,7 @@ async fn retrieve(Extension(bearer): Extension<Bearer>) -> Result<Response, Stat
 }
 
 #[debug_handler]
-async fn toggle(State(state): State<MutexRestState>) -> Result<Response, StatusCode> {
+async fn toggle(State(state): State<MutexSharedState>) -> Result<Response, StatusCode> {
     info!("Enter /toggle");
     let mut guard = state.lock().await;
     let old_value = (*guard).scheduler_running.clone();
@@ -74,7 +75,7 @@ async fn toggle(State(state): State<MutexRestState>) -> Result<Response, StatusC
 
 // Implementation of the task for the deletion scheduler
 #[async_trait]
-impl DeletionTask<TaskError> for RestState {
+impl DeletionTask<TaskError> for SharedState {
     async fn delete(&mut self, _created_before: Duration) -> Result<(), TaskError> {
         if self.scheduler_running {
             info!("-----> RUN TASK");
@@ -132,7 +133,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let mut rx2 = tx.subscribe();
 
     let period = Duration::from_secs(5);
-    let rest_state = RestState::new(client, true);
+    let rest_state = SharedState::new(client, true);
     let deletion_task : MutexDeletionTask<TaskError> = rest_state.clone();
     let delete_scheduler = spawn_deletion_scheduler(&deletion_task, rx1, period);
 
