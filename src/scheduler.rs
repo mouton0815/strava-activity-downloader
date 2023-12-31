@@ -42,7 +42,7 @@ async fn repeat(state: MutexSharedState, period: Duration, mut rx: Receiver<()>)
                 }
             },
             _ = rx.recv() => {
-                info!("Termination signal received, leave scheduler");
+                debug!("Termination signal received, leave scheduler");
                 break;
             }
         }

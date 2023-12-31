@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use tokio::sync::Mutex; // TODO: Can this mutex be std::sync?
+use tokio::sync::Mutex;
 use crate::OAuthClient;
 
 pub struct SharedState {
