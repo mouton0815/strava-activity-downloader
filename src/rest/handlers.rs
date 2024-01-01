@@ -4,7 +4,6 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_macros::debug_handler;
 use log::{debug, info, warn};
-use serde::{Deserialize, Serialize};
 use crate::{Bearer, MutexSharedState};
 
 fn log_error(error: reqwest::Error) -> StatusCode {
@@ -14,17 +13,6 @@ fn log_error(error: reqwest::Error) -> StatusCode {
     let status = error.status().map(|e| e.as_u16()).unwrap_or(500 as u16);
     StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
-
-#[derive(Debug, Deserialize, Serialize)]
-struct Activity {
-    name: String,
-    sport_type: String,
-    start_date_local: String, // TODO: Parse into Datetime or smth
-    distance: f64,
-    kudos_count: u64
-}
-
-type Activities = Vec<Activity>;
 
 #[debug_handler]
 pub async fn retrieve(State(mut _state): State<MutexSharedState>, Extension(bearer): Extension<Bearer>) -> Result<Response, StatusCode> {

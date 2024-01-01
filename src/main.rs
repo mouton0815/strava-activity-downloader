@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::time::Duration;
 use config::{Config, File};
-use log::{debug, info};
+use log::info;
 use tokio::{join, signal};
 use tokio::sync::broadcast;
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
@@ -15,6 +15,9 @@ mod state;
 mod rest;
 mod scheduler;
 mod database;
+mod domain;
+mod util;
+
 
 const CONFIG_YAML : &'static str = "conf/application.yaml";
 
