@@ -1,10 +1,12 @@
-use axum::Extension;
+use axum::{Extension, Json};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_macros::debug_handler;
 use log::{debug, info, warn};
 use crate::{Bearer, MutexSharedState};
+use crate::domain::activity::ActivityVec;
+use crate::domain::activity_map::ActivityMap;
 
 fn log_error(error: reqwest::Error) -> StatusCode {
     warn!("{}", error);
@@ -15,24 +17,25 @@ fn log_error(error: reqwest::Error) -> StatusCode {
 }
 
 #[debug_handler]
-pub async fn retrieve(State(mut _state): State<MutexSharedState>, Extension(bearer): Extension<Bearer>) -> Result<Response, StatusCode> {
+pub async fn retrieve(State(state): State<MutexSharedState>, Extension(bearer): Extension<Bearer>) -> Result<Response, StatusCode> {
     info!("Enter /retrieve");
     let bearer : String = bearer.into();
     debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
-    /*
     // let query = vec![("after", "1701388800")];
-    let result = reqwest::Client::new()
+    let activities : ActivityVec = reqwest::Client::new()
         .get("https://www.strava.com/api/v3/athlete/activities")
         .header(reqwest::header::AUTHORIZATION, bearer)
         //.query(&query)
         .send().await.map_err(log_error)?
         .error_for_status().map_err(log_error)?
-        .json::<Activities>().await.map_err(log_error)?;
+        .json::<ActivityVec>().await.map_err(log_error)?;
 
-    info!("--r--> {:?}", result);
-    Ok(Json(result).into_response())
-    */
-    Ok("Hallo Welt".into_response())
+    //info!("--r--> {:?}", result);
+    let mut guard = state.lock().await;
+    match (*guard).service.add(&activities) {
+        Ok(()) => Ok(Json(activities).into_response()),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR)
+    }
 }
 
 #[debug_handler]

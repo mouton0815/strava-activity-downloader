@@ -4,19 +4,21 @@ use config::{Config, File};
 use log::info;
 use tokio::{join, signal};
 use tokio::sync::broadcast;
+use crate::activity_service::ActivityService;
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
 use crate::oauth::token::{Bearer, TokenHolder};
 use crate::rest::server::spawn_http_server;
 use crate::scheduler::spawn_scheduler;
-use crate::state::{MutexSharedState, SharedState};
+use crate::shared_state::{MutexSharedState, SharedState};
 
 mod oauth;
-mod state;
+mod shared_state;
 mod rest;
 mod scheduler;
 mod database;
 mod domain;
 mod util;
+mod activity_service;
 
 
 const CONFIG_YAML : &'static str = "conf/application.yaml";
@@ -40,11 +42,15 @@ async fn main() -> Result<(), Box<dyn Error>>  {
         config.get_string("oauth.token_url").expect(CONFIG_YAML),
         scopes)?;
 
+    let service = ActivityService::new("foo.db")?;
+
+    let state = SharedState::new(client, service);
+
     let (tx, rx1) = broadcast::channel(1);
     let rx2 = tx.subscribe();
 
+
     let period = Duration::from_secs(10);
-    let state = SharedState::new(client);
     let scheduler = spawn_scheduler(state.clone(), rx1, period);
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;

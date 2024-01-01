@@ -14,8 +14,15 @@ const CREATE_ACTIVITY_TABLE : &'static str =
         kudos_count INTEGER
     )";
 
-const INSERT_ACTIVITY : &'static str =
-    "INSERT INTO activity (id, name, sport_type, start_date, distance, kudos_count) VALUES (?, ?, ?, ?, ?, ?)";
+const UPSERT_ACTIVITY : &'static str =
+    "INSERT INTO activity (id, name, sport_type, start_date, distance, kudos_count) VALUES (?, ?, ?, ?, ?, ?) \
+     ON CONFLICT(id) DO \
+     UPDATE SET \
+       name = excluded.name, \
+       sport_type = excluded.sport_type, \
+       start_date = excluded.start_date, \
+       distance = excluded.distance, \
+       kudos_count = excluded.kudos_count";
 
 const DELETE_ACTIVITY : &'static str =
     "DELETE FROM activity WHERE id = ?";
@@ -36,10 +43,10 @@ impl ActivityTable {
         Ok(())
     }
 
-    pub fn insert(tx: &Transaction, activity: &Activity) -> Result<()> {
-        debug!("Execute\n{}\nwith: {:?}", INSERT_ACTIVITY, activity);
+    pub fn upsert(tx: &Transaction, activity: &Activity) -> Result<()> {
+        debug!("Execute\n{}\nwith: {:?}", UPSERT_ACTIVITY, activity);
         let values = params![activity.id, activity.name, activity.sport_type, activity.start_date, activity.distance, activity.kudos_count];
-        tx.execute(INSERT_ACTIVITY, values)?;
+        tx.execute(UPSERT_ACTIVITY, values)?;
         Ok(())
     }
 
@@ -58,7 +65,7 @@ impl ActivityTable {
         let mut activity_map = ActivityMap::new();
         for row in rows {
             let (id, activity) = row?;
-            activity_map.put(id, activity);
+            activity_map.insert(id, activity);
         }
         Ok(activity_map)
     }
@@ -94,18 +101,20 @@ mod tests {
     use crate::domain::activity::Activity;
 
     #[test]
-    fn test_insert() {
+    fn test_upsert() {
         let activity1 = Activity::new(1, "foo", "walk", "abc", 0.3, 3);
         let activity2 = Activity::new(2, "bar", "hike", "def", 1.0, 1);
+        let activity3 = Activity::new(1, "baz", "run", "ghi", 7.7, 0);
 
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
-        assert!(ActivityTable::insert(&tx, &activity1).is_ok());
-        assert!(ActivityTable::insert(&tx, &activity2).is_ok());
+        assert!(ActivityTable::upsert(&tx, &activity1).is_ok());
+        assert!(ActivityTable::upsert(&tx, &activity2).is_ok());
+        assert!(ActivityTable::upsert(&tx, &activity3).is_ok());
         assert!(tx.commit().is_ok());
 
         let ref_activities = [
-            (1, &activity1),
+            (1, &activity3), // activity3 overwrites activity1
             (2, &activity2)
         ];
         check_results(&mut conn, &ref_activities);
@@ -119,7 +128,7 @@ mod tests {
 
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
-        assert!(ActivityTable::insert(&tx, &activity).is_ok());
+        assert!(ActivityTable::upsert(&tx, &activity).is_ok());
         let result = ActivityTable::delete(&tx, 1);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), true);
@@ -158,8 +167,8 @@ mod tests {
 
         for (_, &ref_activity) in ref_activities.iter().enumerate() {
             let (activity_id, activity_data) = ref_activity;
-            let activity = activities.get(activity_id);
-            assert_eq!(activity, activity_data);
+            let activity = activities.get(&activity_id);
+            assert_eq!(activity, Some(activity_data));
         }
     }
 
