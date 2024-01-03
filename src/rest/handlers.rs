@@ -6,7 +6,6 @@ use axum_macros::debug_handler;
 use log::{debug, info, warn};
 use crate::{Bearer, MutexSharedState};
 use crate::domain::activity::ActivityVec;
-use crate::domain::activity_map::ActivityMap;
 
 fn log_error(error: reqwest::Error) -> StatusCode {
     warn!("{}", error);
@@ -33,7 +32,7 @@ pub async fn retrieve(State(state): State<MutexSharedState>, Extension(bearer): 
     //info!("--r--> {:?}", result);
     let mut guard = state.lock().await;
     match (*guard).service.add(&activities) {
-        Ok(()) => Ok(Json(activities).into_response()),
+        Ok(_) => Ok(Json(activities).into_response()), // TODO: Do someting with the result
         Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR)
     }
 }
