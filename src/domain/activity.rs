@@ -5,7 +5,7 @@ pub struct Activity {
     pub id: u64,
     pub name: String,
     pub sport_type: String,
-    pub start_date: String, // TODO: Parse into Datetime or smth
+    pub start_date: String,
     pub distance: f32,
     pub kudos_count: u32
 }

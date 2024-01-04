@@ -6,7 +6,7 @@ use crate::OAuthClient;
 pub struct SharedState {
     pub oauth: OAuthClient,
     pub service: ActivityService,
-    pub scheduler_running: bool, // TODO: Make "pub" private and use functions instead?
+    pub scheduler_running: bool,
     pub min_activity_time: Option<i64>
 }
 

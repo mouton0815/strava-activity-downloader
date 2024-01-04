@@ -35,7 +35,7 @@ impl ActivityService {
     }
 
     pub fn get_min_start_time(&mut self) -> Result<Option<i64>, BoxError> {
-        let tx = self.connection.transaction()?; // TODO: Transaction for read-only stuff?
+        let tx = self.connection.transaction()?;
         let min_time = ActivityTable::select_minimum_start_date(&tx)?;
         tx.commit()?;
         Ok(min_time.map(iso8601::string_to_secs))
