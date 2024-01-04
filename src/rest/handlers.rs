@@ -45,7 +45,7 @@ pub async fn retrieve(State(state): State<MutexSharedState>, Extension(bearer): 
         .error_for_status().map_err(reqwest_error)?
         .json::<ActivityVec>().await.map_err(reqwest_error)?;
 
-    //info!("--r--> {:?}", result);
+    info!("--r--> {:?}", activities);
 
     let mut guard = state.lock().await;
     let min_time2 = (*guard).service.add(&activities).map_err(service_error)?;

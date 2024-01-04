@@ -63,9 +63,9 @@ mod tests {
     #[test]
     fn test_add_some() {
         let vec = vec![
-            Activity::new(2, "bar", "hike", "2018-02-20T18:02:13Z", 1.0, 1),
-            Activity::new(1, "foo", "walk", "2018-02-20T18:02:15Z", 0.3, 3),
-            Activity::new(3, "baz", "bike", "2018-02-20T18:02:12Z", 0.3, 3),
+            Activity::dummy(2, "2018-02-20T18:02:13Z"),
+            Activity::dummy(1, "2018-02-20T18:02:15Z"),
+            Activity::dummy(3, "2018-02-20T18:02:12Z"),
         ];
         let mut service = create_service();
         let time = service.add(&vec);

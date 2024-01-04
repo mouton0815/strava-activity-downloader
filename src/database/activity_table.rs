@@ -10,25 +10,32 @@ const CREATE_ACTIVITY_TABLE : &'static str =
         name TEXT NOT NULL,
         sport_type TEXT NOT NULL,
         start_date TEXT NOT NULL,
-        distance DECIMAL(10, 2),
+        distance INTEGER,
+        moving_time INTEGER,
+        total_elevation_gain INTEGER,
+        average_speed INTEGER,
         kudos_count INTEGER
     )";
 
 const UPSERT_ACTIVITY : &'static str =
-    "INSERT INTO activity (id, name, sport_type, start_date, distance, kudos_count) VALUES (?, ?, ?, ?, ?, ?) \
+    "INSERT INTO activity (id, name, sport_type, start_date, distance, moving_time, total_elevation_gain, average_speed, kudos_count) \
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
      ON CONFLICT(id) DO \
      UPDATE SET \
        name = excluded.name, \
        sport_type = excluded.sport_type, \
        start_date = excluded.start_date, \
        distance = excluded.distance, \
+       moving_time = excluded.moving_time, \
+       total_elevation_gain = excluded.total_elevation_gain, \
+       average_speed = excluded.average_speed, \
        kudos_count = excluded.kudos_count";
 
 const DELETE_ACTIVITY : &'static str =
     "DELETE FROM activity WHERE id = ?";
 
 const SELECT_ACTIVITIES : &'static str =
-    "SELECT id, name, sport_type, start_date, distance, kudos_count FROM activity";
+    "SELECT id, name, sport_type, start_date, distance, moving_time, total_elevation_gain, average_speed, kudos_count FROM activity";
 
 const SELECT_ACTIVITY : &'static str =
     concatcp!(SELECT_ACTIVITIES, " WHERE id = ?");
@@ -48,7 +55,15 @@ impl ActivityTable {
 
     pub fn upsert(tx: &Transaction, activity: &Activity) -> Result<()> {
         debug!("Execute\n{}\nwith: {:?}", UPSERT_ACTIVITY, activity);
-        let values = params![activity.id, activity.name, activity.sport_type, activity.start_date, activity.distance, activity.kudos_count];
+        // Because sqlite does not support DECIMAL and stores FLOATs with many digits after the
+        // dot (https://www.sqlite.org/floatingpoint.html), we need to convert the numbers to int:
+        let dist_multiplied = (activity.distance.clone() * 10.0) as u64;
+        let speed_multiplied = (activity.average_speed.clone() * 1000.0) as u64;
+        let elev_multiplied = (activity.total_elevation_gain.clone() * 10.0) as u64;
+        let values = params![
+            activity.id, activity.name, activity.sport_type, activity.start_date, dist_multiplied,
+            activity.moving_time, elev_multiplied, speed_multiplied, activity.kudos_count
+        ];
         tx.execute(UPSERT_ACTIVITY, values)?;
         Ok(())
     }
@@ -89,14 +104,19 @@ impl ActivityTable {
         })
     }
 
+    // TODO: Tuple in result is only needed for a function that is not needed
     fn row_to_activity(row: &Row) -> Result<(u64, Activity)> {
+        // Reverse the conversion of floats to integers done in function upsert:
         Ok((row.get(0)?, Activity {
             id: row.get(0)?,
             name: row.get(1)?,
             sport_type: row.get(2)?,
             start_date: row.get(3)?,
-            distance: row.get(4)?,
-            kudos_count: row.get(5)?
+            distance: (row.get::<_, u64>(4)? as f32 / 10.0),
+            moving_time: row.get(5)?,
+            total_elevation_gain: (row.get::<_, u64>(6)? as f32 / 10.0),
+            average_speed: (row.get::<_, u64>(7)? as f32 / 1000.0),
+            kudos_count: row.get(8)?
         }))
     }
 }
@@ -109,9 +129,9 @@ mod tests {
 
     #[test]
     fn test_upsert() {
-        let activity1 = Activity::new(1, "foo", "walk", "abc", 0.3, 3);
-        let activity2 = Activity::new(2, "bar", "hike", "def", 1.0, 1);
-        let activity3 = Activity::new(1, "baz", "run", "ghi", 7.7, 0);
+        let activity1 = Activity::dummy(1, "foo");
+        let activity2 = Activity::dummy(2, "bar");
+        let activity3 = Activity::dummy(1, "baz");
 
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
@@ -131,7 +151,7 @@ mod tests {
 
     #[test]
     fn test_delete() {
-        let activity = Activity::new(1, "foo", "walk", "abc", 0.3, 3);
+        let activity = Activity::dummy(1, "n/a");
 
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
@@ -158,14 +178,13 @@ mod tests {
     fn select_minimum_start_date() {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
-        ActivityTable::upsert(&tx, &Activity::new(1, "foo", "walk", "2018-02-20T18:02:13Z", 0.3, 3)).unwrap();
-        ActivityTable::upsert(&tx, &Activity::new(1, "foo", "walk", "2018-02-20T18:02:15Z", 0.3, 3)).unwrap();
-        ActivityTable::upsert(&tx, &Activity::new(2, "bar", "hike", "2018-02-20T18:02:12Z", 1.0, 1)).unwrap();
+        ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:13Z")).unwrap();
+        ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:15Z")).unwrap();
+        ActivityTable::upsert(&tx, &Activity::dummy(2, "2018-02-20T18:02:12Z")).unwrap();
 
         let result = ActivityTable::select_minimum_start_date(&tx);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some("2018-02-20T18:02:12Z".to_string()));
-
     }
 
     #[test]
