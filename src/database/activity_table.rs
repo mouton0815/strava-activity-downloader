@@ -33,6 +33,9 @@ const SELECT_ACTIVITIES : &'static str =
 const SELECT_ACTIVITY : &'static str =
     concatcp!(SELECT_ACTIVITIES, " WHERE id = ?");
 
+const SELECT_START_DATE_OF_EARLIEST_ACTIVITY : &'static str =
+    "SELECT MIN(start_date) FROM activity";
+
 
 pub struct ActivityTable;
 
@@ -71,14 +74,18 @@ impl ActivityTable {
     }
 
     pub fn select_by_id(tx: &Transaction, id: u64) -> Result<Option<Activity>> {
-        Self::select_by_id_internal(tx, id).optional()
-    }
-
-    pub fn select_by_id_internal(tx: &Transaction, id: u64) -> Result<Activity> {
         debug!("Execute\n{} with: {}", SELECT_ACTIVITY, id);
         let mut stmt = tx.prepare(SELECT_ACTIVITY)?;
         stmt.query_row([id], |row | {
             Ok(Self::row_to_activity(row)?.1)
+        }).optional()
+    }
+
+    pub fn select_minimum_start_date(tx: &Transaction) -> Result<Option<String>> {
+        debug!("Execute\n{}", SELECT_START_DATE_OF_EARLIEST_ACTIVITY);
+        let mut stmt = tx.prepare(SELECT_START_DATE_OF_EARLIEST_ACTIVITY)?;
+        stmt.query_row([], |row | {
+            Ok(row.get::<_, Option<String>>(0)?)
         })
     }
 
@@ -145,6 +152,30 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false);
         assert!(tx.commit().is_ok());
+    }
+
+    #[test]
+    fn select_minimum_start_date() {
+        let mut conn = create_connection_and_table();
+        let tx = conn.transaction().unwrap();
+        ActivityTable::upsert(&tx, &Activity::new(1, "foo", "walk", "2018-02-20T18:02:13Z", 0.3, 3)).unwrap();
+        ActivityTable::upsert(&tx, &Activity::new(1, "foo", "walk", "2018-02-20T18:02:15Z", 0.3, 3)).unwrap();
+        ActivityTable::upsert(&tx, &Activity::new(2, "bar", "hike", "2018-02-20T18:02:12Z", 1.0, 1)).unwrap();
+
+        let result = ActivityTable::select_minimum_start_date(&tx);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some("2018-02-20T18:02:12Z".to_string()));
+
+    }
+
+    #[test]
+    fn select_minimum_start_date_missing() {
+        let mut conn = create_connection_and_table();
+        let tx = conn.transaction().unwrap();
+
+        let result = ActivityTable::select_minimum_start_date(&tx);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None);
     }
 
     fn create_connection_and_table() -> Connection {

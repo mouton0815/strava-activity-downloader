@@ -6,6 +6,7 @@ use axum_macros::debug_handler;
 use log::{debug, info, warn};
 use crate::{Bearer, MutexSharedState};
 use crate::domain::activity::ActivityVec;
+use crate::util::iso8601;
 
 fn log_error(error: reqwest::Error) -> StatusCode {
     warn!("{}", error);
@@ -20,21 +21,33 @@ pub async fn retrieve(State(state): State<MutexSharedState>, Extension(bearer): 
     info!("Enter /retrieve");
     let bearer : String = bearer.into();
     debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
-    // let query = vec![("after", "1701388800")];
-    let activities : ActivityVec = reqwest::Client::new()
+
+    let mut guard = state.lock().await;
+    let min_time1 = (*guard).service.get_min_start_time().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    drop(guard);
+
+    let mut client = reqwest::Client::new()
         .get("https://www.strava.com/api/v3/athlete/activities")
-        .header(reqwest::header::AUTHORIZATION, bearer)
-        //.query(&query)
+        .header(reqwest::header::AUTHORIZATION, bearer);
+
+    if let Some(before) = min_time1 {
+        let query = vec![("before", before)];
+        client = client.query(&query);
+    }
+
+    let activities : ActivityVec = client
         .send().await.map_err(log_error)?
         .error_for_status().map_err(log_error)?
         .json::<ActivityVec>().await.map_err(log_error)?;
 
     //info!("--r--> {:?}", result);
+
     let mut guard = state.lock().await;
-    match (*guard).service.add(&activities) {
-        Ok(_) => Ok(Json(activities).into_response()), // TODO: Do someting with the result
-        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR)
-    }
+    let min_time2 = (*guard).service.add(&activities).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    // Be safe although min_time2 <= min_time1 should always hold:
+    (*guard).min_activity_time = iso8601::min_secs(min_time1, min_time2);
+
+    Ok(Json(activities).into_response()) // TODO: Do someting with the result
 }
 
 #[debug_handler]
