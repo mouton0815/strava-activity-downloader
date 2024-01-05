@@ -22,21 +22,32 @@ fn service_error(error: BoxError) -> StatusCode {
     StatusCode::INTERNAL_SERVER_ERROR
 }
 
+async fn get_min_time(state: &MutexSharedState) -> Result<Option<i64>, BoxError> {
+    let mut guard = state.lock().await;
+    match (*guard).min_activity_time.as_ref() {
+        Some(time) => Ok(Some(time.clone())),
+        None => (*guard).service.get_min_start_time()
+    }
+}
+
+async fn add_activities(state: &MutexSharedState, activities: &ActivityVec) -> Result<(), BoxError> {
+    let mut guard = state.lock().await;
+    let min_time = (*guard).service.add(activities)?;
+    (*guard).min_activity_time = min_time;
+    Ok(())
+}
+
 #[debug_handler]
 pub async fn retrieve(State(state): State<MutexSharedState>, Extension(bearer): Extension<Bearer>) -> Result<Response, StatusCode> {
     info!("Enter /retrieve");
     let bearer : String = bearer.into();
     debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
 
-    let mut guard = state.lock().await;
-    let min_time1 = (*guard).service.get_min_start_time().map_err(service_error)?;
-    drop(guard);
-
     let mut client = reqwest::Client::new()
         .get("https://www.strava.com/api/v3/athlete/activities")
         .header(reqwest::header::AUTHORIZATION, bearer);
 
-    if let Some(before) = min_time1 {
+    if let Some(before) = get_min_time(&state).await.map_err(service_error)? {
         let query = vec![("before", before)];
         client = client.query(&query);
     }
@@ -47,11 +58,7 @@ pub async fn retrieve(State(state): State<MutexSharedState>, Extension(bearer): 
         .json::<ActivityVec>().await.map_err(reqwest_error)?;
 
     info!("--r--> {:?}", activities);
-
-    let mut guard = state.lock().await;
-    let min_time2 = (*guard).service.add(&activities).map_err(service_error)?;
-    // Calculate minimum although min_time2 <= min_time1 should always hold:
-    (*guard).min_activity_time = iso8601::min_secs(min_time1, min_time2);
+    add_activities(&state, &activities).await.map_err(service_error)?;
 
     Ok(Json(activities).into_response()) // TODO: Do someting with the result
 }

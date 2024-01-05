@@ -13,7 +13,7 @@ async fn task(_state: &mut SharedState, bearer: Bearer) -> Result<(), BoxError> 
     Ok(())
 }
 
-async fn authorize(state: MutexSharedState) -> Result<(), BoxError> {
+async fn authorize(state: &MutexSharedState) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
     if (*guard).scheduler_running {
         match (*guard).oauth.get_bearer().await? {
@@ -37,7 +37,7 @@ async fn repeat(state: MutexSharedState, period: Duration, mut rx: Receiver<()>)
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                if let Err(e) = authorize(state.clone()).await {
+                if let Err(e) = authorize(&state).await {
                     warn!("Task failed: {:?}, leave scheduler", e);
                     break;
                 }
