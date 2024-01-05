@@ -4,9 +4,10 @@ use log::{debug, info};
 use tokio::net::TcpListener;
 use tokio::sync::broadcast::Receiver;
 use tokio::task::JoinHandle;
-use crate::{AUTH_CALLBACK, MutexSharedState};
+use crate::AUTH_CALLBACK;
 use crate::rest::handlers::{retrieve, toggle_scheduler};
 use crate::rest::oauth::{callback, middleware};
+use crate::state::shared_state::MutexSharedState;
 
 pub fn spawn_http_server(listener: TcpListener, state: MutexSharedState, mut rx: Receiver<()>) -> JoinHandle<()> {
     info!("Spawn HTTP server");

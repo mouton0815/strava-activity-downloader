@@ -5,7 +5,8 @@ use axum::response::{IntoResponse, Redirect, Response};
 use axum_macros::debug_handler;
 use log::{debug, info, warn};
 use serde::Deserialize;
-use crate::{AUTH_CALLBACK, MutexSharedState};
+use crate::AUTH_CALLBACK;
+use crate::state::shared_state::MutexSharedState;
 
 #[derive(Deserialize)]
 pub struct CallbackQuery {

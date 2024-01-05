@@ -3,7 +3,8 @@ use oauth2::TokenResponse;
 use oauth2::basic::BasicTokenResponse;
 use thiserror::Error;
 
-const EXPIRY_LEEWAY: u64 = 10; // In seconds
+// Number of seconds before expiry time an access token will be refreshed
+const EXPIRY_LEEWAY: u64 = 10;
 
 #[derive(Clone, Debug)]
 pub struct Bearer(String);
@@ -23,7 +24,7 @@ impl From<Bearer> for String {
 pub struct TokenHolder {
     token: BasicTokenResponse,
     bearer: Bearer, // Bearer token extracted from the access token
-    expiry: Option<u64> // Expiry date in seconds since 1970 extracted from the access token
+    expiry: Option<u64> // Expiry date in seconds since 1970
 }
 
 impl TokenHolder {
@@ -42,7 +43,7 @@ impl TokenHolder {
 }
 
 pub fn is_expired(token_holder: &TokenHolder) -> bool {
-    token_holder.expiry.map_or(false, |e| e  - EXPIRY_LEEWAY < get_current_time())
+    token_holder.expiry.map_or(false, |e| e - EXPIRY_LEEWAY < get_current_time())
 }
 
 fn get_current_time() -> u64 {

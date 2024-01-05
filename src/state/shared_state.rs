@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use crate::activity_service::ActivityService;
 use crate::OAuthClient;
+use crate::service::activity_service::ActivityService;
 
 pub struct SharedState {
     pub oauth: OAuthClient,

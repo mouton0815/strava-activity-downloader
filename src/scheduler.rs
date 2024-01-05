@@ -4,7 +4,8 @@ use axum::BoxError;
 use tokio::sync::broadcast::Receiver;
 use tokio::task::JoinHandle;
 use tokio::time;
-use crate::{Bearer, MutexSharedState, SharedState};
+use crate::{Bearer, SharedState};
+use crate::state::shared_state::MutexSharedState;
 
 async fn task(_state: &mut SharedState, bearer: Bearer) -> Result<(), BoxError> {
     let bearer : String = bearer.into();

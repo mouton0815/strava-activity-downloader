@@ -4,21 +4,21 @@ use config::{Config, File};
 use log::info;
 use tokio::{join, signal};
 use tokio::sync::broadcast;
-use crate::activity_service::ActivityService;
 use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
 use crate::oauth::token::{Bearer, TokenHolder};
 use crate::rest::server::spawn_http_server;
 use crate::scheduler::spawn_scheduler;
-use crate::shared_state::{MutexSharedState, SharedState};
+use crate::service::activity_service::ActivityService;
+use crate::state::shared_state::SharedState;
 
 mod oauth;
-mod shared_state;
 mod rest;
 mod scheduler;
 mod database;
 mod domain;
 mod util;
-mod activity_service;
+mod state;
+mod service;
 
 
 const CONFIG_YAML : &'static str = "conf/application.yaml";

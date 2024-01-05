@@ -1,8 +1,7 @@
-// TODO: Move to service package or similar
-
 use std::error::Error;
 use axum::BoxError;
 use iso8601_timestamp::Timestamp;
+use log::debug;
 use rusqlite::Connection;
 use crate::database::activity_table::ActivityTable;
 use crate::database::state_table::StateTable;
@@ -23,6 +22,7 @@ impl ActivityService {
 
     /// Adds all activities to the database and returns the minimum start_date as epoch timestamp.
     pub fn add(&mut self, activities: &ActivityVec) -> Result<Option<i64>, BoxError> {
+        debug!("Add {} activities to database", activities.len());
         let tx = self.connection.transaction()?;
         let mut min_time : Option<Timestamp> = None;
         for activity in activities {
@@ -38,6 +38,7 @@ impl ActivityService {
         let tx = self.connection.transaction()?;
         let min_time = ActivityTable::select_minimum_start_date(&tx)?;
         tx.commit()?;
+        debug!("Read min activity time {:?} from database", min_time);
         Ok(min_time.map(iso8601::string_to_secs))
     }
 }
