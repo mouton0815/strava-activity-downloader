@@ -34,6 +34,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let port = config.get_int("server.port").unwrap_or(3000) as u16;
     let scopes : Vec<String> = config.get_array("oauth.scopes").unwrap_or(Vec::new())
         .iter().map(|v| v.clone().into_string().expect(CONFIG_YAML)).collect();
+    let period = config.get_int("scheduler.period").unwrap_or(10) as u64;
 
     let client = OAuthClient::new(&host, port,
         config.get_string("oauth.client_id").expect(CONFIG_YAML),
@@ -50,7 +51,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let rx2 = tx.subscribe();
 
 
-    let period = Duration::from_secs(10);
+    let period = Duration::from_secs(period);
     let scheduler = spawn_scheduler(state.clone(), rx1, period);
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
