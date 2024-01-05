@@ -7,18 +7,27 @@ use tokio::time;
 use crate::{Bearer, SharedState};
 use crate::state::shared_state::MutexSharedState;
 
-async fn task(_state: &mut SharedState, bearer: Bearer) -> Result<(), BoxError> {
-    let bearer : String = bearer.into();
+async fn is_running(state: &MutexSharedState) -> bool {
+    let guard = state.lock().await;
+    (*guard).scheduler_running.clone()
+}
+
+async fn get_bearer(state: &MutexSharedState) -> Result<Option<Bearer>, BoxError> {
+    let mut guard = state.lock().await;
+    (*guard).oauth.get_bearer().await
+}
+
+async fn task(_state: &MutexSharedState, bearer: Bearer) -> Result<(), BoxError> {
+    let bearer: String = bearer.into();
     debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
     Ok(())
 }
 
 async fn authorize(state: &MutexSharedState) -> Result<(), BoxError> {
-    let mut guard = state.lock().await;
-    if (*guard).scheduler_running {
-        match (*guard).oauth.get_bearer().await? {
+    if is_running(&state).await {
+        match get_bearer(&state).await? {
             Some(bearer) => {
-                task(&mut *guard, bearer).await?;
+                task(state, bearer).await?;
             }
             None => {
                 // There is no way for the scheduler to do an OAuth auth code flow.

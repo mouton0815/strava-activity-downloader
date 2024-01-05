@@ -128,7 +128,7 @@ impl OAuthClient {
                         }
                     }
                 }
-                Ok(Some(self.token.as_ref().expect("Missing token").bearer()))
+                Ok(Some(self.token.as_ref().expect("Missing token").bearer().clone()))
             }
             None => {
                 Ok(None)

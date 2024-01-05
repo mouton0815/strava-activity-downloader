@@ -7,7 +7,6 @@ use log::{debug, info, warn};
 use crate::Bearer;
 use crate::domain::activity::ActivityVec;
 use crate::state::shared_state::MutexSharedState;
-use crate::util::iso8601;
 
 fn reqwest_error(error: reqwest::Error) -> StatusCode {
     warn!("{}", error);

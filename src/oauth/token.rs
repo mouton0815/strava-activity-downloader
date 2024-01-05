@@ -34,8 +34,8 @@ impl TokenHolder {
         Self { token, bearer, expiry }
     }
 
-    pub fn bearer(&self) -> Bearer {
-        self.bearer.clone()
+    pub fn bearer(&self) -> &Bearer {
+        &self.bearer
     }
     pub fn token(&self) -> &BasicTokenResponse {
         &self.token
