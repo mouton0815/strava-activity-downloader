@@ -35,7 +35,7 @@ async fn get_max_time(state: &MutexSharedState) -> Result<i64, BoxError> {
 }
 
 async fn get_activities_per_page(state: &MutexSharedState) -> u16 {
-    let mut guard = state.lock().await;
+    let guard = state.lock().await;
     (*guard).activities_per_page.clone()
 }
 

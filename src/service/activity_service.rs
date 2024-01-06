@@ -7,6 +7,7 @@ use rusqlite::Connection;
 use crate::database::activity_table::ActivityTable;
 use crate::database::state_table::StateTable;
 use crate::domain::activity::ActivityVec;
+use crate::domain::activity_stats::ActivityStats;
 use crate::util::iso8601;
 
 pub struct ActivityService {
@@ -35,12 +36,16 @@ impl ActivityService {
         Ok(max_time.map(iso8601::timestamp_to_secs))
     }
 
-    pub fn get_max_start_time(&mut self) -> Result<Option<i64>, BoxError> {
+    pub fn get_stats(&mut self) -> Result<ActivityStats, BoxError> {
         let tx = self.connection.transaction()?;
-        let max_time = ActivityTable::select_maximum_start_date(&tx)?;
+        let stats = ActivityTable::select_stats(&tx)?;
         tx.commit()?;
-        debug!("Read max activity time {:?} from database", max_time);
-        Ok(max_time.map(iso8601::string_to_secs))
+        debug!("Read activity stats {:?} from database", stats);
+        Ok(stats)
+    }
+
+    pub fn get_max_start_time(&mut self) -> Result<Option<i64>, BoxError> {
+        Ok(self.get_stats()?.max_time_as_secs())
     }
 }
 

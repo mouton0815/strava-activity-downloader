@@ -18,6 +18,7 @@ pub async fn middleware(State(state): State<MutexSharedState>, mut request: Requ
     debug!("Request URI: {}", request.uri());
     // Do no apply middleware to auth callback route
     if request.uri().path().starts_with(AUTH_CALLBACK) ||
+        request.uri().path().starts_with("/status") || // TODO: Remove line
         request.uri().path().starts_with("/toggle") { // TODO: Remove line
     debug!("Bypass middleware for auth callback");
         let response = next.run(request).await;

@@ -1,7 +1,7 @@
 use iso8601_timestamp::Timestamp;
 
-pub fn string_to_secs(str: String) -> i64 {
-    parse_internal(&str).unwrap_or_else(|| panic!("Invalid timestamp: '{}'", str))
+pub fn string_to_secs(str: &String) -> i64 {
+    parse_internal(str).unwrap_or_else(|| panic!("Invalid timestamp: '{}'", str))
 }
 
 pub fn timestamp_to_secs(ts: Timestamp) -> i64 {

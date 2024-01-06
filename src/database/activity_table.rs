@@ -3,6 +3,7 @@ use log::debug;
 use rusqlite::{Connection, OptionalExtension, params, Result, Row, Transaction};
 use crate::domain::activity::Activity;
 use crate::domain::activity_map::ActivityMap;
+use crate::domain::activity_stats::ActivityStats;
 
 const CREATE_ACTIVITY_TABLE : &'static str =
     "CREATE TABLE IF NOT EXISTS activity (
@@ -40,8 +41,8 @@ const SELECT_ACTIVITIES : &'static str =
 const SELECT_ACTIVITY : &'static str =
     concatcp!(SELECT_ACTIVITIES, " WHERE id = ?");
 
-const SELECT_START_DATE_OF_LATEST_ACTIVITY : &'static str =
-    "SELECT MAX(start_date) FROM activity";
+const SELECT_STATS : &'static str =
+    "SELECT COUNT(*), MIN(start_date), MAX(start_date) FROM activity";
 
 
 pub struct ActivityTable;
@@ -96,11 +97,11 @@ impl ActivityTable {
         }).optional()
     }
 
-    pub fn select_maximum_start_date(tx: &Transaction) -> Result<Option<String>> {
-        debug!("Execute\n{}", SELECT_START_DATE_OF_LATEST_ACTIVITY);
-        let mut stmt = tx.prepare(SELECT_START_DATE_OF_LATEST_ACTIVITY)?;
+    pub fn select_stats(tx: &Transaction) -> Result<ActivityStats> {
+        debug!("Execute\n{}", SELECT_STATS);
+        let mut stmt = tx.prepare(SELECT_STATS)?;
         stmt.query_row([], |row | {
-            Ok(row.get::<_, Option<String>>(0)?)
+            Ok(ActivityStats::new(row.get(0)?, row.get(1)?, row.get(2)?))
         })
     }
 
@@ -126,6 +127,7 @@ mod tests {
     use rusqlite::Connection;
     use crate::database::activity_table::ActivityTable;
     use crate::domain::activity::Activity;
+    use crate::domain::activity_stats::ActivityStats;
 
     #[test]
     fn test_upsert() {
@@ -179,22 +181,24 @@ mod tests {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
         ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:13Z")).unwrap();
-        ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:15Z")).unwrap();
+        ActivityTable::upsert(&tx, &Activity::dummy(3, "2018-02-20T18:02:15Z")).unwrap();
         ActivityTable::upsert(&tx, &Activity::dummy(2, "2018-02-20T18:02:12Z")).unwrap();
+        ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:11Z")).unwrap(); // Note: ID overwrite
 
-        let result = ActivityTable::select_maximum_start_date(&tx);
+        let result = ActivityTable::select_stats(&tx);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some("2018-02-20T18:02:15Z".to_string()));
+        let reference = ActivityStats::new(3, Some("2018-02-20T18:02:11Z".to_string()), Some("2018-02-20T18:02:15Z".to_string()));
+        assert_eq!(result.unwrap(), reference);
     }
 
     #[test]
-    fn select_maximum_start_date_missing() {
+    fn select_stats_missing() {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
 
-        let result = ActivityTable::select_maximum_start_date(&tx);
+        let result = ActivityTable::select_stats(&tx);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), None);
+        assert_eq!(result.unwrap(), ActivityStats::new(0, None, None));
     }
 
     fn create_connection_and_table() -> Connection {
