@@ -18,32 +18,37 @@ async fn get_bearer(state: &MutexSharedState) -> Result<Option<Bearer>, BoxError
     (*guard).oauth.get_bearer().await
 }
 
-async fn get_min_time(state: &MutexSharedState) -> Result<Option<i64>, BoxError> {
+// Try to take the time from the state object.
+// If it is not part of the state (on server startup), then get it from database.
+// If no activity records exist in the database, then return 0.
+async fn get_max_time(state: &MutexSharedState) -> Result<i64, BoxError> {
     let mut guard = state.lock().await;
-    match (*guard).min_activity_time.as_ref() {
-        Some(time) => Ok(Some(time.clone())),
-        None => (*guard).service.get_min_start_time()
+    match (*guard).max_activity_time.as_ref() {
+        Some(time) => Ok(time.clone()),
+        None => {
+            match (*guard).service.get_max_start_time()? {
+                Some(time) => Ok(time),
+                None => Ok(0)
+            }
+        }
     }
 }
 
 async fn add_activities(state: &MutexSharedState, activities: &ActivityVec) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    let min_time = (*guard).service.add(activities)?;
-    (*guard).min_activity_time = min_time;
+    let max_time = (*guard).service.add(activities)?;
+    (*guard).max_activity_time = max_time;
     Ok(())
 }
 
 async fn task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
-    let mut client = reqwest::Client::new()
+    let after = get_max_time(state).await?;
+    let query = vec![("after", after)]; // TODO: Take per_page arg from config
+
+    let activities : ActivityVec = reqwest::Client::new()
         .get("https://www.strava.com/api/v3/athlete/activities")
-        .header(reqwest::header::AUTHORIZATION, bearer);
-
-    if let Some(before) = get_min_time(state).await? {
-        let query = vec![("before", before)];
-        client = client.query(&query);
-    }
-
-    let activities : ActivityVec = client
+        .header(reqwest::header::AUTHORIZATION, bearer)
+        .query(&query)
         .send().await?
         .error_for_status()?
         .json::<ActivityVec>().await?;

@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::error::Error;
 use axum::BoxError;
 use iso8601_timestamp::Timestamp;
@@ -20,26 +21,26 @@ impl ActivityService {
         Ok(Self{ connection })
     }
 
-    /// Adds all activities to the database and returns the minimum start_date as epoch timestamp.
+    /// Adds all activities to the database and returns the maximum start_date as epoch timestamp.
     pub fn add(&mut self, activities: &ActivityVec) -> Result<Option<i64>, BoxError> {
         info!("Add {} activities to database", activities.len());
         let tx = self.connection.transaction()?;
-        let mut min_time : Option<Timestamp> = None;
+        let mut max_time : Option<Timestamp> = None;
         for activity in activities {
             ActivityTable::upsert(&tx, activity)?;
             let time = Timestamp::parse(activity.start_date.as_str());
-            min_time = iso8601::min_secs(time, min_time);
+            max_time = max(time, max_time);
         }
         tx.commit()?;
-        Ok(min_time.map(iso8601::timestamp_to_secs))
+        Ok(max_time.map(iso8601::timestamp_to_secs))
     }
 
-    pub fn get_min_start_time(&mut self) -> Result<Option<i64>, BoxError> {
+    pub fn get_max_start_time(&mut self) -> Result<Option<i64>, BoxError> {
         let tx = self.connection.transaction()?;
-        let min_time = ActivityTable::select_minimum_start_date(&tx)?;
+        let max_time = ActivityTable::select_maximum_start_date(&tx)?;
         tx.commit()?;
-        debug!("Read min activity time {:?} from database", min_time);
-        Ok(min_time.map(iso8601::string_to_secs))
+        debug!("Read max activity time {:?} from database", max_time);
+        Ok(max_time.map(iso8601::string_to_secs))
     }
 }
 
@@ -56,7 +57,7 @@ mod tests {
         assert!(time.is_ok());
         assert_eq!(time.unwrap(), None);
 
-        let time = service.get_min_start_time();
+        let time = service.get_max_start_time();
         assert!(time.is_ok());
         assert_eq!(time.unwrap(), None);
     }
@@ -71,11 +72,11 @@ mod tests {
         let mut service = create_service();
         let time = service.add(&vec);
         assert!(time.is_ok());
-        assert_eq!(time.unwrap(), Some(1519149732)); // 2018-02-20T18:02:12Z
+        assert_eq!(time.unwrap(), Some(1519149735)); // 2018-02-20T18:02:12Z
 
-        let time = service.get_min_start_time();
+        let time = service.get_max_start_time();
         assert!(time.is_ok());
-        assert_eq!(time.unwrap(), Some(1519149732));
+        assert_eq!(time.unwrap(), Some(1519149735));
     }
 
     fn create_service() -> ActivityService {

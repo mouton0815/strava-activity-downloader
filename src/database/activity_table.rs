@@ -40,8 +40,8 @@ const SELECT_ACTIVITIES : &'static str =
 const SELECT_ACTIVITY : &'static str =
     concatcp!(SELECT_ACTIVITIES, " WHERE id = ?");
 
-const SELECT_START_DATE_OF_EARLIEST_ACTIVITY : &'static str =
-    "SELECT MIN(start_date) FROM activity";
+const SELECT_START_DATE_OF_LATEST_ACTIVITY : &'static str =
+    "SELECT MAX(start_date) FROM activity";
 
 
 pub struct ActivityTable;
@@ -96,9 +96,9 @@ impl ActivityTable {
         }).optional()
     }
 
-    pub fn select_minimum_start_date(tx: &Transaction) -> Result<Option<String>> {
-        debug!("Execute\n{}", SELECT_START_DATE_OF_EARLIEST_ACTIVITY);
-        let mut stmt = tx.prepare(SELECT_START_DATE_OF_EARLIEST_ACTIVITY)?;
+    pub fn select_maximum_start_date(tx: &Transaction) -> Result<Option<String>> {
+        debug!("Execute\n{}", SELECT_START_DATE_OF_LATEST_ACTIVITY);
+        let mut stmt = tx.prepare(SELECT_START_DATE_OF_LATEST_ACTIVITY)?;
         stmt.query_row([], |row | {
             Ok(row.get::<_, Option<String>>(0)?)
         })
@@ -175,24 +175,24 @@ mod tests {
     }
 
     #[test]
-    fn select_minimum_start_date() {
+    fn select_maximum_start_date() {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
         ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:13Z")).unwrap();
         ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:15Z")).unwrap();
         ActivityTable::upsert(&tx, &Activity::dummy(2, "2018-02-20T18:02:12Z")).unwrap();
 
-        let result = ActivityTable::select_minimum_start_date(&tx);
+        let result = ActivityTable::select_maximum_start_date(&tx);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some("2018-02-20T18:02:12Z".to_string()));
+        assert_eq!(result.unwrap(), Some("2018-02-20T18:02:15Z".to_string()));
     }
 
     #[test]
-    fn select_minimum_start_date_missing() {
+    fn select_maximum_start_date_missing() {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
 
-        let result = ActivityTable::select_minimum_start_date(&tx);
+        let result = ActivityTable::select_maximum_start_date(&tx);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), None);
     }
