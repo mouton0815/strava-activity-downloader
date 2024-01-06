@@ -1,10 +1,9 @@
-use axum::{BoxError, Extension, Json};
+use axum::{BoxError, Json};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_macros::debug_handler;
-use log::{debug, info, warn};
-use crate::Bearer;
+use log::{info, warn};
 use crate::domain::status::Status;
 use crate::state::shared_state::MutexSharedState;
 
@@ -17,19 +16,9 @@ fn reqwest_error(error: reqwest::Error) -> StatusCode {
     StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-#[allow(dead_code)]
 fn service_error(error: BoxError) -> StatusCode {
     warn!("{}", error);
     StatusCode::INTERNAL_SERVER_ERROR
-}
-
-#[debug_handler]
-pub async fn retrieve(State(_state): State<MutexSharedState>, Extension(bearer): Extension<Bearer>) -> Result<Response, StatusCode> {
-    info!("Enter /retrieve");
-    let bearer : String = bearer.into();
-    debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
-
-    Ok(Json("Heho").into_response()) // TODO: Do something with the result
 }
 
 #[debug_handler]

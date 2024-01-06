@@ -13,9 +13,6 @@ use url::Url;
 use crate::oauth::token;
 use crate::{Bearer, TokenHolder};
 
-// TODO: Better pass as ctor argument?
-pub const AUTH_CALLBACK : &'static str = "/auth_callback";
-
 type TokenResult = Result<TokenHolder, BoxError>;
 type UriResult = Result<Uri, BoxError>;
 type BearerResult = Result<Option<Bearer>, BoxError>;
@@ -29,15 +26,13 @@ pub struct OAuthClient {
 }
 
 impl OAuthClient {
-    pub fn new(host: &str,
-               port: u16,
-               client_id: String,
+    pub fn new(client_id: String,
                client_secret: String,
                auth_url: String,
                token_url: String,
+               redirect_url: String,
                scopes: Vec<String>,
     ) -> Result<OAuthClient, Box<dyn Error>> {
-        let redirect_url = format!("http://{}:{}{}", host, port, AUTH_CALLBACK);
         let client = BasicClient::new(
             ClientId::new(client_id),
             Some(ClientSecret::new(client_secret.to_string())),
@@ -70,7 +65,8 @@ impl OAuthClient {
             .authorize_url(CsrfToken::new_random)
             .add_scopes(scopes.into_iter())
             .url();
-        debug!("State is {}", csrf_token.secret());
+        debug!("-----> State is {}", csrf_token.secret());
+        debug!("-----> Origin is {}", request_uri);
         self.state = Some(csrf_token.secret().clone());
         self.origin = Some(request_uri.clone());
         auth_url
@@ -96,7 +92,6 @@ impl OAuthClient {
                 Err(error)
             }
         }
-
     }
 
     async fn exchange_code_for_token(&self, code: &str) -> TokenResult {

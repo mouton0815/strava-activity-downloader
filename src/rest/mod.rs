@@ -1,3 +1,4 @@
-mod oauth;
-mod handlers;
 pub mod server;
+pub mod paths;
+mod handlers;
+mod oauth;

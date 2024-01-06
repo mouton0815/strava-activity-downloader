@@ -4,8 +4,9 @@ use config::{Config, File};
 use log::info;
 use tokio::{join, signal};
 use tokio::sync::broadcast;
-use crate::oauth::client::{AUTH_CALLBACK, OAuthClient};
+use crate::oauth::client::OAuthClient;
 use crate::oauth::token::{Bearer, TokenHolder};
+use crate::rest::paths::AUTH_CALLBACK;
 use crate::rest::server::spawn_http_server;
 use crate::scheduler::spawn_scheduler;
 use crate::service::activity_service::ActivityService;
@@ -37,11 +38,12 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let period = config.get_int("scheduler.period").unwrap_or(10) as u64;
     let activities_per_page = config.get_int("strava.activities_per_page").unwrap_or(30) as u16;
 
-    let client = OAuthClient::new(&host, port,
+    let client = OAuthClient::new(
         config.get_string("oauth.client_id").expect(CONFIG_YAML),
         config.get_string("oauth.client_secret").expect(CONFIG_YAML),
         config.get_string("oauth.auth_url").expect(CONFIG_YAML),
         config.get_string("oauth.token_url").expect(CONFIG_YAML),
+        format!("http://{}:{}{}", host, port, AUTH_CALLBACK),
         scopes)?;
 
     let service = ActivityService::new("foo.db")?;
