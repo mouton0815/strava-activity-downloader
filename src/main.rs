@@ -35,6 +35,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let scopes : Vec<String> = config.get_array("oauth.scopes").unwrap_or(Vec::new())
         .iter().map(|v| v.clone().into_string().expect(CONFIG_YAML)).collect();
     let period = config.get_int("scheduler.period").unwrap_or(10) as u64;
+    let activities_per_page = config.get_int("strava.activities_per_page").unwrap_or(30) as u16;
 
     let client = OAuthClient::new(&host, port,
         config.get_string("oauth.client_id").expect(CONFIG_YAML),
@@ -45,7 +46,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
 
     let service = ActivityService::new("foo.db")?;
 
-    let state = SharedState::new(client, service);
+    let state = SharedState::new(client, service, activities_per_page);
 
     let (tx, rx1) = broadcast::channel(1);
     let rx2 = tx.subscribe();

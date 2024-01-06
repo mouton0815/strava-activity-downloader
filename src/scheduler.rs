@@ -34,6 +34,11 @@ async fn get_max_time(state: &MutexSharedState) -> Result<i64, BoxError> {
     }
 }
 
+async fn get_activities_per_page(state: &MutexSharedState) -> u16 {
+    let mut guard = state.lock().await;
+    (*guard).activities_per_page.clone()
+}
+
 async fn add_activities(state: &MutexSharedState, activities: &ActivityVec) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
     let max_time = (*guard).service.add(activities)?;
@@ -43,7 +48,8 @@ async fn add_activities(state: &MutexSharedState, activities: &ActivityVec) -> R
 
 async fn task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
     let after = get_max_time(state).await?;
-    let query = vec![("after", after)]; // TODO: Take per_page arg from config
+    let per_page = get_activities_per_page(state).await as i64;
+    let query = vec![("after", after),("per_page", per_page)];
 
     let activities : ActivityVec = reqwest::Client::new()
         .get("https://www.strava.com/api/v3/athlete/activities")
