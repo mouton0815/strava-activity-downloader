@@ -10,11 +10,12 @@ const CREATE_ACTIVITY_TABLE : &'static str =
         name TEXT NOT NULL,
         sport_type TEXT NOT NULL,
         start_date TEXT NOT NULL,
-        distance INTEGER,
-        moving_time INTEGER,
-        total_elevation_gain INTEGER,
-        average_speed INTEGER,
-        kudos_count INTEGER
+        distance INTEGER NOT NULL,
+        moving_time INTEGER NOT NULL,
+        total_elevation_gain INTEGER NOT NULL,
+        average_speed INTEGER NOT NULL,
+        kudos_count INTEGER NOT NULL,
+        gpx_fetched INTEGER DEFAULT 0 NOT NULL CHECK (gpx_fetched IN (0, 1))
     )";
 
 const UPSERT_ACTIVITY : &'static str =
@@ -56,7 +57,8 @@ impl ActivityTable {
     pub fn upsert(tx: &Transaction, activity: &Activity) -> Result<()> {
         debug!("Execute\n{}\nwith: {:?}", UPSERT_ACTIVITY, activity);
         // Because sqlite does not support DECIMAL and stores FLOATs with many digits after the
-        // dot (https://www.sqlite.org/floatingpoint.html), we need to convert the numbers to int:
+        // dot (https://www.sqlite.org/floatingpoint.html), we need to convert the numbers to int.
+        // The inverse operations are done by row_to_activity() below.
         let dist_multiplied = (activity.distance.clone() * 10.0) as u64;
         let speed_multiplied = (activity.average_speed.clone() * 1000.0) as u64;
         let elev_multiplied = (activity.total_elevation_gain.clone() * 10.0) as u64;

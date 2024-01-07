@@ -49,7 +49,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
         config.get_string("oauth.target_url").unwrap_or(STATUS.to_string()),
         scopes)?;
 
-    let service = ActivityService::new("foo.db")?;
+    let service = ActivityService::new("strava.db")?;
 
     let state = SharedState::new(client, service, activities_per_page);
 
