@@ -27,6 +27,7 @@ const CONFIG_YAML : &'static str = "conf/application.yaml";
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
+
     let config = Config::builder()
         .add_source(File::with_name(CONFIG_YAML))
         .build()?;
@@ -37,6 +38,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
         .iter().map(|v| v.clone().into_string().expect(CONFIG_YAML)).collect();
     let period = config.get_int("scheduler.period").unwrap_or(10) as u64;
     let activities_per_page = config.get_int("strava.activities_per_page").unwrap_or(30) as u16;
+    let web_dir = format!("{}/web/dist", std::env::var("CARGO_MANIFEST_DIR").unwrap());
 
     let client = OAuthClient::new(
         config.get_string("oauth.client_id").expect(CONFIG_YAML),
@@ -59,7 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let scheduler = spawn_scheduler(state.clone(), rx1, period);
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-    let http_server = spawn_http_server(listener, state.clone(), rx2);
+    let http_server = spawn_http_server(listener, state.clone(), rx2, &web_dir);
 
     await_shutdown().await;
     info!("Termination signal received");
