@@ -6,7 +6,7 @@ use tokio::{join, signal};
 use tokio::sync::broadcast;
 use crate::oauth::client::OAuthClient;
 use crate::oauth::token::{Bearer, TokenHolder};
-use crate::rest::paths::AUTH_CALLBACK;
+use crate::rest::paths::{AUTH_CALLBACK, STATUS};
 use crate::rest::server::spawn_http_server;
 use crate::scheduler::spawn_scheduler;
 use crate::service::activity_service::ActivityService;
@@ -44,6 +44,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
         config.get_string("oauth.auth_url").expect(CONFIG_YAML),
         config.get_string("oauth.token_url").expect(CONFIG_YAML),
         format!("http://{}:{}{}", host, port, AUTH_CALLBACK),
+        config.get_string("oauth.target_url").unwrap_or(STATUS.to_string()),
         scopes)?;
 
     let service = ActivityService::new("foo.db")?;

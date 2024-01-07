@@ -4,7 +4,6 @@ use std::error::Error;
 // Sync is necessary for From/Into convenience:
 // https://users.rust-lang.org/t/convert-box-dyn-error-to-box-dyn-error-send/48856
 use axum::BoxError;
-use axum::http::Uri;
 use log::{debug, info, warn};
 use oauth2::basic::BasicClient;
 use oauth2::{AuthorizationCode, AuthType, AuthUrl, ClientId, ClientSecret, CsrfToken, HttpRequest, HttpResponse, RedirectUrl, ResourceOwnerPassword, ResourceOwnerUsername, Scope, TokenResponse, TokenUrl};
@@ -14,14 +13,14 @@ use crate::oauth::token;
 use crate::{Bearer, TokenHolder};
 
 type TokenResult = Result<TokenHolder, BoxError>;
-type UriResult = Result<Uri, BoxError>;
+type UrlResult = Result<String, BoxError>;
 type BearerResult = Result<Option<Bearer>, BoxError>;
 
 pub struct OAuthClient {
     client: BasicClient,
     scopes: Vec<String>,
     state: Option<String>,
-    origin: Option<Uri>,   // REST endpoint that triggered the authentication
+    target: String, // URL to be redirected to after authentication. Can be relative or absolute.
     token: Option<TokenHolder>,
 }
 
@@ -31,6 +30,7 @@ impl OAuthClient {
                auth_url: String,
                token_url: String,
                redirect_url: String,
+               target_url: String,
                scopes: Vec<String>,
     ) -> Result<OAuthClient, Box<dyn Error>> {
         let client = BasicClient::new(
@@ -41,7 +41,7 @@ impl OAuthClient {
         ).set_redirect_uri(RedirectUrl::new(redirect_url)?)
             .set_auth_type(AuthType::RequestBody);
 
-        Ok(Self { client, scopes, state: None, origin: None, token: None })
+        Ok(Self { client, scopes, state: None, target: target_url, token: None })
     }
 
     #[allow(dead_code)]
@@ -57,7 +57,7 @@ impl OAuthClient {
         Ok(TokenHolder::new(token))
     }
 
-    pub fn authorize_auth_code_grant(&mut self, request_uri: &Uri) -> Url {
+    pub fn authorize_auth_code_grant(&mut self) -> Url {
         // Transform Vec<String> to Vec<Scope>.
         // Note that cloning is needed anyway because Client.add_scopes() moves its argument.
         let scopes : Vec<Scope> = self.scopes.iter().map(|s| Scope::new(s.clone())).collect();
@@ -65,27 +65,22 @@ impl OAuthClient {
             .authorize_url(CsrfToken::new_random)
             .add_scopes(scopes.into_iter())
             .url();
-        debug!("-----> State is {}", csrf_token.secret());
-        debug!("-----> Origin is {}", request_uri);
         self.state = Some(csrf_token.secret().clone());
-        self.origin = Some(request_uri.clone());
         auth_url
     }
 
-    pub async fn callback_auth_code_grant(&mut self, code: &str, state: &str) -> UriResult {
+    pub async fn callback_auth_code_grant(&mut self, code: &str, state: &str) -> UrlResult {
         debug!("Authorized with code {}", code);
-        if self.origin.is_none() || self.state.is_none() || self.state.as_ref().unwrap() != state {
+        if self.state.is_none() || self.state.as_ref().unwrap() != state {
             warn!("Received state {} does not match expected state {}", state,
             self.state.as_ref().unwrap_or(&String::from("<null>")));
             return Err("OAuth state does not match".into());
         }
         match self.exchange_code_for_token(code).await {
             Ok(token) => {
-                let request_uri = self.origin.clone().unwrap();
                 self.token = Some(token);
                 self.state = None;
-                self.origin = None;
-                Ok(request_uri)
+                Ok(self.target.clone())
             }
             Err(error) => {
                 warn!("Error: {:?}", error);

@@ -1,6 +1,6 @@
 use axum::BoxError;
 use axum::extract::{Query, Request, State};
-use axum::http::{StatusCode, Uri};
+use axum::http::StatusCode;
 use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum_macros::debug_handler;
@@ -30,8 +30,7 @@ pub async fn authorize(State(state): State<MutexSharedState>) -> Result<Response
                 }
                 None => {
                     info!("No token, redirect to authorization endpoint");
-                    let request_uri = Uri::from_static("/status");
-                    let url = (*guard).oauth.authorize_auth_code_grant(&request_uri);
+                    let url = (*guard).oauth.authorize_auth_code_grant();
                     debug!("Redirect to {}", url);
                     Ok(Redirect::temporary(url.as_str()).into_response())
                 }
