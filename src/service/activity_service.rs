@@ -5,7 +5,6 @@ use iso8601_timestamp::Timestamp;
 use log::{debug, info};
 use rusqlite::Connection;
 use crate::database::activity_table::ActivityTable;
-use crate::database::state_table::StateTable;
 use crate::domain::activity::ActivityVec;
 use crate::domain::activity_stats::ActivityStats;
 use crate::util::iso8601;
@@ -18,7 +17,6 @@ impl ActivityService {
     pub fn new(db_path: &str) -> Result<Self, Box<dyn Error>> {
         let connection = Connection::open(db_path)?;
         ActivityTable::create_table(&connection)?;
-        StateTable::create_table(&connection)?;
         Ok(Self{ connection })
     }
 

@@ -1,8 +1,7 @@
 use const_format::concatcp;
 use log::debug;
 use rusqlite::{Connection, OptionalExtension, params, Result, Row, Transaction};
-use crate::domain::activity::Activity;
-use crate::domain::activity_map::ActivityMap;
+use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
 
 const CREATE_ACTIVITY_TABLE : &'static str =
@@ -69,31 +68,33 @@ impl ActivityTable {
         Ok(())
     }
 
+    #[allow(dead_code)]
     pub fn delete(tx: &Transaction, id: u64) -> Result<bool> {
         debug!("Execute\n{} with: {}", DELETE_ACTIVITY, id);
         let row_count = tx.execute(DELETE_ACTIVITY, params![id])?;
         Ok(row_count == 1)
     }
 
-    pub fn select_all(tx: &Transaction) -> Result<ActivityMap> {
+    #[allow(dead_code)]
+    pub fn select_all(tx: &Transaction) -> Result<ActivityVec> {
         debug!("Execute\n{}", SELECT_ACTIVITIES);
         let mut stmt = tx.prepare(SELECT_ACTIVITIES)?;
-        let rows = stmt.query_map([], |row| {
+        let activity_iter = stmt.query_map([], |row| {
             Self::row_to_activity(row)
         })?;
-        let mut activity_map = ActivityMap::new();
-        for row in rows {
-            let (id, activity) = row?;
-            activity_map.insert(id, activity);
+        let mut activity_vec = ActivityVec::new();
+        for activity in activity_iter {
+            activity_vec.push(activity?)
         }
-        Ok(activity_map)
+        Ok(activity_vec)
     }
 
+    #[allow(dead_code)]
     pub fn select_by_id(tx: &Transaction, id: u64) -> Result<Option<Activity>> {
         debug!("Execute\n{} with: {}", SELECT_ACTIVITY, id);
         let mut stmt = tx.prepare(SELECT_ACTIVITY)?;
         stmt.query_row([id], |row | {
-            Ok(Self::row_to_activity(row)?.1)
+            Ok(Self::row_to_activity(row)?)
         }).optional()
     }
 
@@ -105,10 +106,9 @@ impl ActivityTable {
         })
     }
 
-    // TODO: Tuple in result is only needed for a function that is not needed
-    fn row_to_activity(row: &Row) -> Result<(u64, Activity)> {
+    fn row_to_activity(row: &Row) -> Result<Activity> {
         // Reverse the conversion of floats to integers done in function upsert:
-        Ok((row.get(0)?, Activity {
+        Ok(Activity {
             id: row.get(0)?,
             name: row.get(1)?,
             sport_type: row.get(2)?,
@@ -118,7 +118,7 @@ impl ActivityTable {
             total_elevation_gain: (row.get::<_, u64>(6)? as f32 / 10.0),
             average_speed: (row.get::<_, u64>(7)? as f32 / 1000.0),
             kudos_count: row.get(8)?
-        }))
+        })
     }
 }
 
@@ -142,10 +142,7 @@ mod tests {
         assert!(ActivityTable::upsert(&tx, &activity3).is_ok());
         assert!(tx.commit().is_ok());
 
-        let ref_activities = [
-            (1, &activity3), // activity3 overwrites activity1
-            (2, &activity2)
-        ];
+        let ref_activities = [&activity3, &activity2]; // activity3 overwrites activity1
         check_results(&mut conn, &ref_activities);
         check_single_result(&mut conn, ref_activities[0]);
         check_single_result(&mut conn, ref_activities[1]);
@@ -209,7 +206,7 @@ mod tests {
         conn
     }
 
-    fn check_results(conn: &mut Connection, ref_activities: &[(u64, &Activity)]) {
+    fn check_results(conn: &mut Connection, ref_activities: &[&Activity]) {
         let tx = conn.transaction().unwrap();
 
         let activities = ActivityTable::select_all(&tx);
@@ -219,22 +216,21 @@ mod tests {
         let activities = activities.unwrap();
         assert_eq!(activities.len(), ref_activities.len());
 
-        for (_, &ref_activity) in ref_activities.iter().enumerate() {
-            let (activity_id, activity_data) = ref_activity;
-            let activity = activities.get(&activity_id);
-            assert_eq!(activity, Some(activity_data));
+        for (index, &ref_activity) in ref_activities.iter().enumerate() {
+            let activity = activities.get(index);
+            assert_eq!(activity, Some(ref_activity));
         }
     }
 
-    fn check_single_result(conn: &mut Connection, ref_activity: (u64, &Activity)) {
+    fn check_single_result(conn: &mut Connection, ref_activity: &Activity) {
         let tx = conn.transaction().unwrap();
 
-        let activity = ActivityTable::select_by_id(&tx, ref_activity.0);
+        let activity = ActivityTable::select_by_id(&tx, ref_activity.id.clone());
         assert!(activity.is_ok());
         assert!(tx.commit().is_ok());
 
         let activity = activity.unwrap();
         assert!(activity.is_some());
-        assert_eq!(activity.unwrap(), *ref_activity.1);
+        assert_eq!(activity.unwrap(), *ref_activity);
     }
 }
