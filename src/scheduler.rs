@@ -13,6 +13,11 @@ async fn is_running(state: &MutexSharedState) -> bool {
     (*guard).scheduler_running.clone()
 }
 
+async fn stop_running(state: &MutexSharedState) {
+    let mut guard = state.lock().await;
+    (*guard).scheduler_running = false
+}
+
 async fn get_bearer(state: &MutexSharedState) -> Result<Option<Bearer>, BoxError> {
     let mut guard = state.lock().await;
     (*guard).oauth.get_bearer().await
@@ -59,8 +64,12 @@ async fn task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> 
         .error_for_status()?
         .json::<ActivityVec>().await?;
 
-    debug!("--r--> {:?}", activities);
-    add_activities(&state, &activities).await?;
+    if activities.len() == 0 {
+        info!("No further activities, stop executing tasks (can be re-enabled)");
+        stop_running(state).await;
+    } else {
+        add_activities(&state, &activities).await?;
+    }
     Ok(())
 }
 
