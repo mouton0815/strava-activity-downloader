@@ -4,7 +4,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum_macros::debug_handler;
 use log::{info, warn};
-use crate::domain::status::Status;
+use crate::domain::server_status::ServerStatus;
 use crate::state::shared_state::MutexSharedState;
 
 #[allow(dead_code)]
@@ -22,13 +22,13 @@ fn service_error(error: BoxError) -> StatusCode {
 }
 
 #[debug_handler]
-pub async fn status(State(state): State<MutexSharedState>) -> Result<Json<Status>, StatusCode> {
+pub async fn status(State(state): State<MutexSharedState>) -> Result<Json<ServerStatus>, StatusCode> {
     info!("Enter /status");
     let mut guard = state.lock().await;
     let authorized = (*guard).oauth.get_bearer().await.map_err(service_error)?.is_some();
     let scheduling = (*guard).scheduler_running.clone();
     let activity_stats = (*guard).service.get_stats().map_err(service_error)?;
-    Ok(Json(Status::new(authorized, scheduling, activity_stats)))
+    Ok(Json(ServerStatus::new(authorized, scheduling, activity_stats)))
 }
 
 #[debug_handler]

@@ -30,7 +30,7 @@ const UPSERT_ACTIVITY : &'static str =
        moving_time = excluded.moving_time, \
        total_elevation_gain = excluded.total_elevation_gain, \
        average_speed = excluded.average_speed, \
-       kudos_count = excluded.kudos_count";
+       kudos_count = excluded.kudos_count"; // Do NOT update column gpx_fetched
 
 const DELETE_ACTIVITY : &'static str =
     "DELETE FROM activity WHERE id = ?";
