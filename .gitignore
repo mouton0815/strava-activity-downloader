@@ -9,3 +9,8 @@ Cargo.lock
 
 /target
 /.idea
+
+# React
+node_modules/
+package-lock.json
+dist/

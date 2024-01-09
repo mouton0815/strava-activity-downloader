@@ -6,16 +6,11 @@ type LoginButtonProps = {
     authorized: boolean
 }
 
-const LoginButton: FunctionComponent<LoginButtonProps> = ({authorized}) => {
-    if (authorized) {
-        return null
-    }
-    return (
-        <button onClick={() => { window.location = 'http://localhost:3000/authorize' }}>
-            Login at Strava
-        </button>
-    )
-}
+const LoginButton: FunctionComponent<LoginButtonProps> = ({authorized}) => (
+    <button disabled={authorized} onClick={() => { window.location = 'http://localhost:3000/authorize' }}>
+        Login at Strava
+    </button>
+)
 
 const App: FunctionComponent = () => {
     const statusUrl = "http://localhost:3000/status"
@@ -47,13 +42,31 @@ const App: FunctionComponent = () => {
 
     return (
         <div>
-            <ul>
-                <li>Authorized: <b>{ Boolean(status.authorized).toString() }</b></li>
-                <li>Scheduling: <b>{ Boolean(status.scheduling).toString() }</b></li>
-                <li>Activities: <b>{ status.activity_stats.count }</b></li>
-                <li>Earliest: <b>{ formatTime(status.activity_stats.min_time) }</b></li>
-                <li>Latest: <b>{ formatTime(status.activity_stats.max_time) }</b></li>
-            </ul>
+            <table>
+                <tr>
+                    <th colSpan={2}>Server status</th>
+                </tr>
+                <tr>
+                    <td>Authenticated with Strava:</td>
+                    <td><b>{ Boolean(status.authorized).toString() }</b></td>
+                </tr>
+                <tr>
+                    <td>Download scheduler running:</td>
+                    <td><b>{ Boolean(status.scheduling).toString() }</b></td>
+                </tr>
+                <tr>
+                    <td>Number of downloaded activities:</td>
+                    <td><b>{ status.activity_stats.count }</b></td>
+                </tr>
+                <tr>
+                    <td>Date and time of earliest activity:</td>
+                    <td><b>{ formatTime(status.activity_stats.min_time) }</b></td>
+                </tr>
+                <tr>
+                    <td>Date and time of latest activity:</td>
+                    <td><b>{ formatTime(status.activity_stats.max_time) }</b></td>
+                </tr>
+            </table>
             <LoginButton authorized={ status.authorized } />
             <button onClick={toggle}>
                 { status.scheduling ? 'Stop scheduler' : 'Start scheduler'}
