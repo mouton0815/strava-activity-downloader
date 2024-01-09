@@ -10,6 +10,8 @@ Cargo.lock
 /target
 /.idea
 
+*.db
+
 # React
 node_modules/
 package-lock.json
