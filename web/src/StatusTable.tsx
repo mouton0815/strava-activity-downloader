@@ -4,8 +4,8 @@ type StatusTableProps = {
     status: ServerStatus
 }
 
-const formatTime = (time: string | null): string => {
-    return time ? time.replace('T', ' ').replace('Z', '') : ''
+const extractDate = (datetime: string | null): string => {
+    return datetime ? datetime.substring(0, 10) : ''
 }
 
 export const StatusTable = ({ status }: StatusTableProps) => (
@@ -15,7 +15,7 @@ export const StatusTable = ({ status }: StatusTableProps) => (
             <th colSpan={2}>Server status</th>
         </tr>
         <tr>
-            <td>Authenticated with Strava:</td>
+            <td>Logged in to Strava:</td>
             <td><b>{ Boolean(status.authorized).toString() }</b></td>
         </tr>
         <tr>
@@ -27,12 +27,12 @@ export const StatusTable = ({ status }: StatusTableProps) => (
             <td><b>{ status.activity_stats.count }</b></td>
         </tr>
         <tr>
-            <td>Date and time of earliest activity:</td>
-            <td><b>{ formatTime(status.activity_stats.min_time) }</b></td>
+            <td>Date earliest downloaded activity:</td>
+            <td><b>{ extractDate(status.activity_stats.min_time) }</b></td>
         </tr>
         <tr>
-            <td>Date and time of latest activity:</td>
-            <td><b>{ formatTime(status.activity_stats.max_time) }</b></td>
+            <td>Date of latest downloaded activity:</td>
+            <td><b>{ extractDate(status.activity_stats.max_time) }</b></td>
         </tr>
         </tbody>
     </table>
