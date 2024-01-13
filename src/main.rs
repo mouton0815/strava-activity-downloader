@@ -2,7 +2,7 @@ use std::error::Error;
 use std::time::Duration;
 use config::{Config, File};
 use log::info;
-use tokio::{join, signal};
+use tokio::join;
 use tokio::sync::broadcast;
 use crate::oauth::client::OAuthClient;
 use crate::oauth::token::{Bearer, TokenHolder};
@@ -11,6 +11,7 @@ use crate::rest::server::spawn_http_server;
 use crate::scheduler::spawn_scheduler;
 use crate::service::activity_service::ActivityService;
 use crate::state::shared_state::SharedState;
+use crate::util::shutdown_signal::shutdown_signal;
 
 mod oauth;
 mod rest;
@@ -63,7 +64,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
     let http_server = spawn_http_server(listener, state.clone(), rx2, &web_dir);
 
-    await_shutdown().await;
+    shutdown_signal().await;
     info!("Termination signal received");
     tx.send(())?;
 
@@ -72,29 +73,4 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     info!("HTTP Server terminated");
 
     Ok(())
-}
-
-// See https://github.com/tokio-rs/axum/blob/main/examples/graceful-shutdown/src/main.rs
-async fn await_shutdown() {
-    let ctrl_c = async {
-        signal::ctrl_c()
-            .await
-            .expect("Failed to install Ctrl+C handler");
-    };
-
-    #[cfg(unix)]
-    let terminate = async {
-        signal::unix::signal(signal::unix::SignalKind::terminate())
-            .expect("Failed to install signal handler")
-            .recv()
-            .await;
-    };
-
-    #[cfg(not(unix))]
-    let terminate = std::future::pending::<()>();
-
-    tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-    }
 }
