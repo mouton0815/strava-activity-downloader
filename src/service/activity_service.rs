@@ -1,13 +1,10 @@
-use std::cmp::max;
 use std::error::Error;
 use axum::BoxError;
-use iso8601_timestamp::Timestamp;
 use log::{debug, info};
 use rusqlite::Connection;
 use crate::database::activity_table::ActivityTable;
 use crate::domain::activity::ActivityVec;
 use crate::domain::activity_stats::ActivityStats;
-use crate::util::iso8601;
 
 pub struct ActivityService {
     connection: Connection
@@ -20,18 +17,27 @@ impl ActivityService {
         Ok(Self{ connection })
     }
 
-    /// Adds all activities to the database and returns the maximum start_date as epoch timestamp.
-    pub fn add(&mut self, activities: &ActivityVec) -> Result<Option<i64>, BoxError> {
+    /// Adds all activities to the database and returns the computed [ActivityStats]
+    /// for **these** inserted activities (**not** for the entire database table).
+    pub fn add(&mut self, activities: &ActivityVec) -> Result<ActivityStats, BoxError> {
         info!("Add {} activities to database", activities.len());
         let tx = self.connection.transaction()?;
-        let mut max_time : Option<Timestamp> = None;
+        let mut count : u32 = 0;
+        let mut min_time : Option<String> = None;
+        let mut max_time : Option<String> = None;
         for activity in activities {
-            ActivityTable::upsert(&tx, activity)?;
-            let time = Timestamp::parse(activity.start_date.as_str());
-            max_time = max(time, max_time);
+            if ActivityTable::upsert(&tx, activity)? {
+                count += 1;
+            }
+            // std::cmp::min for Option treats None as minimal value, but we need the timestamp
+            min_time = Some(match min_time {
+                Some(time) => std::cmp::min(activity.start_date.clone(), time),
+                None => activity.start_date.clone()
+            });
+            max_time = std::cmp::max(Some(activity.start_date.clone()), max_time);
         }
         tx.commit()?;
-        Ok(max_time.map(iso8601::timestamp_to_secs))
+        Ok(ActivityStats::new(count, min_time, max_time))
     }
 
     pub fn get_stats(&mut self) -> Result<ActivityStats, BoxError> {
@@ -41,28 +47,21 @@ impl ActivityService {
         debug!("Read activity stats {:?} from database", stats);
         Ok(stats)
     }
-
-    pub fn get_max_start_time(&mut self) -> Result<Option<i64>, BoxError> {
-        Ok(self.get_stats()?.max_time_as_secs())
-    }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::ActivityService;
     use crate::domain::activity::{Activity, ActivityVec};
+    use crate::domain::activity_stats::ActivityStats;
 
     #[test]
     fn test_add_none() {
         let vec = ActivityVec::new();
         let mut service = create_service();
-        let time = service.add(&vec);
-        assert!(time.is_ok());
-        assert_eq!(time.unwrap(), None);
-
-        let time = service.get_max_start_time();
-        assert!(time.is_ok());
-        assert_eq!(time.unwrap(), None);
+        let stats = service.add(&vec);
+        assert!(stats.is_ok());
+        assert_eq!(stats.unwrap(), ActivityStats::new(0, None, None));
     }
 
     #[test]
@@ -73,13 +72,11 @@ mod tests {
             Activity::dummy(3, "2018-02-20T18:02:12Z"),
         ];
         let mut service = create_service();
-        let time = service.add(&vec);
-        assert!(time.is_ok());
-        assert_eq!(time.unwrap(), Some(1519149735)); // 2018-02-20T18:02:12Z
-
-        let time = service.get_max_start_time();
-        assert!(time.is_ok());
-        assert_eq!(time.unwrap(), Some(1519149735));
+        let stats = service.add(&vec);
+        assert!(stats.is_ok());
+        assert_eq!(stats.unwrap(), ActivityStats::new(
+            3, Some("2018-02-20T18:02:12Z".to_string()), Some("2018-02-20T18:02:15Z".to_string())));
+        //assert_eq!(stats.unwrap(), Some(1519149735)); // 2018-02-20T18:02:12Z
     }
 
     fn create_service() -> ActivityService {

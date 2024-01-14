@@ -54,7 +54,7 @@ impl ActivityTable {
         Ok(())
     }
 
-    pub fn upsert(tx: &Transaction, activity: &Activity) -> Result<()> {
+    pub fn upsert(tx: &Transaction, activity: &Activity) -> Result<bool> {
         debug!("Execute\n{}\nwith: {:?}", UPSERT_ACTIVITY, activity);
         // Because sqlite does not support DECIMAL and stores FLOATs with many digits after the
         // dot (https://www.sqlite.org/floatingpoint.html), we need to convert the numbers to int.
@@ -66,8 +66,7 @@ impl ActivityTable {
             activity.id, activity.name, activity.sport_type, activity.start_date, dist_multiplied,
             activity.moving_time, elev_multiplied, speed_multiplied, activity.kudos_count
         ];
-        tx.execute(UPSERT_ACTIVITY, values)?;
-        Ok(())
+        Ok(tx.execute(UPSERT_ACTIVITY, values)? == 1)
     }
 
     #[allow(dead_code)]
@@ -126,7 +125,7 @@ impl ActivityTable {
 
 #[cfg(test)]
 mod tests {
-    use rusqlite::Connection;
+    use rusqlite::{Connection, Transaction};
     use crate::database::activity_table::ActivityTable;
     use crate::domain::activity::Activity;
     use crate::domain::activity_stats::ActivityStats;
@@ -139,9 +138,9 @@ mod tests {
 
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
-        assert!(ActivityTable::upsert(&tx, &activity1).is_ok());
-        assert!(ActivityTable::upsert(&tx, &activity2).is_ok());
-        assert!(ActivityTable::upsert(&tx, &activity3).is_ok());
+        assert_eq!(upsert(&tx, &activity1), true);
+        assert_eq!(upsert(&tx, &activity2), true);
+        assert_eq!(upsert(&tx, &activity3), false); // activity3 overwrites activity1
         assert!(tx.commit().is_ok());
 
         let ref_activities = [&activity3, &activity2]; // activity3 overwrites activity1
@@ -206,6 +205,12 @@ mod tests {
         let conn = conn.unwrap();
         assert!(ActivityTable::create_table(&conn).is_ok());
         conn
+    }
+
+    fn upsert(tx: &Transaction, activity: &Activity) -> bool {
+        let result = ActivityTable::upsert(tx, activity);
+        assert!(result.is_ok());
+        result.unwrap()
     }
 
     fn check_results(conn: &mut Connection, ref_activities: &[&Activity]) {

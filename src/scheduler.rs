@@ -23,31 +23,17 @@ async fn get_bearer(state: &MutexSharedState) -> Result<Option<Bearer>, BoxError
     (*guard).oauth.get_bearer().await
 }
 
-// Try to take the time from the state object.
-// If it is not part of the state (on server startup), then get it from database.
-// If no activity records exist in the database, then return 0.
-async fn get_max_time(state: &MutexSharedState) -> Result<i64, BoxError> {
+async fn get_query_params(state: &MutexSharedState) -> Result<(i64, i64), BoxError> {
     let mut guard = state.lock().await;
-    match (*guard).max_activity_time.as_ref() {
-        Some(time) => Ok(time.clone()),
-        None => {
-            match (*guard).service.get_max_start_time()? {
-                Some(time) => Ok(time),
-                None => Ok(0)
-            }
-        }
-    }
-}
-
-async fn get_activities_per_page(state: &MutexSharedState) -> u16 {
-    let guard = state.lock().await;
-    (*guard).activities_per_page.clone()
+    let max_time = (*guard).get_max_time().await?;
+    let per_page = (*guard).activities_per_page.clone() as i64;
+    Ok((max_time, per_page))
 }
 
 async fn add_activities(state: &MutexSharedState, activities: &ActivityVec) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    let max_time = (*guard).service.add(activities)?;
-    (*guard).max_activity_time = max_time;
+    let activity_stats = (*guard).service.add(activities)?;
+    (*guard).merge_activity_stats(&activity_stats);
     Ok(())
 }
 
@@ -62,9 +48,8 @@ async fn send_status_event(state: &MutexSharedState) -> Result<(), BoxError> {
 }
 
 async fn task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
-    let after = get_max_time(state).await?;
-    let per_page = get_activities_per_page(state).await as i64;
-    let query = vec![("after", after),("per_page", per_page)];
+    let (max_time, per_page) = get_query_params(state).await?;
+    let query = vec![("after", max_time),("per_page", per_page)];
 
     let activities : ActivityVec = reqwest::Client::new()
         .get("https://www.strava.com/api/v3/athlete/activities")
@@ -80,6 +65,8 @@ async fn task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> 
     } else {
         add_activities(&state, &activities).await?;
     }
+
+    // In all cases send a status event, e.g. to inform the scheduler disabling
     send_status_event(state).await?;
     Ok(())
 }
