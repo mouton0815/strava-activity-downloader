@@ -51,6 +51,16 @@ async fn add_activities(state: &MutexSharedState, activities: &ActivityVec) -> R
     Ok(())
 }
 
+async fn send_status_event(state: &MutexSharedState) -> Result<(), BoxError> {
+    let mut guard = state.lock().await;
+    if (*guard).sender.receiver_count() > 0 {
+        let server_status = (*guard).get_server_status().await?;
+        let server_status = serde_json::to_string(&server_status)?;
+        (*guard).sender.send(server_status)?;
+    }
+    Ok(())
+}
+
 async fn task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
     let after = get_max_time(state).await?;
     let per_page = get_activities_per_page(state).await as i64;
@@ -70,6 +80,7 @@ async fn task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> 
     } else {
         add_activities(&state, &activities).await?;
     }
+    send_status_event(state).await?;
     Ok(())
 }
 

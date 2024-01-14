@@ -22,7 +22,6 @@ mod util;
 mod state;
 mod service;
 
-
 const CONFIG_YAML : &'static str = "conf/application.yaml";
 
 #[tokio::main]
@@ -52,21 +51,24 @@ async fn main() -> Result<(), Box<dyn Error>>  {
 
     let service = ActivityService::new("strava.db")?;
 
-    let state = SharedState::new(client, service, activities_per_page);
+    // Channel for distributing the termination signal to the treads
+    let (tx_term, rx_term1) = broadcast::channel(1);
+    let rx_term2 = tx_term.subscribe();
 
-    let (tx, rx1) = broadcast::channel(1);
-    let rx2 = tx.subscribe();
+    // Channel for sending data from the producer to the SSE handler
+    let (tx_data, _rx_data) = broadcast::channel::<String>(3);
 
+    let state = SharedState::new(client, service, tx_data, activities_per_page);
 
     let period = Duration::from_secs(period);
-    let scheduler = spawn_scheduler(state.clone(), rx1, period);
+    let scheduler = spawn_scheduler(state.clone(), rx_term1, period);
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
-    let http_server = spawn_http_server(listener, state.clone(), rx2, &web_dir);
+    let http_server = spawn_http_server(listener, state.clone(), rx_term2, &web_dir);
 
     shutdown_signal().await;
     info!("Termination signal received");
-    tx.send(())?;
+    tx_term.send(())?;
 
     let (_,_) = join!(scheduler, http_server);
     info!("Scheduler terminated");

@@ -58,6 +58,7 @@ pub async fn callback(State(state): State<MutexSharedState>, query: Query<Callba
     }
 }
 
+// TODO: Remove oauth middleware (not needed)
 pub async fn middleware(State(state): State<MutexSharedState>, mut request: Request, next: Next) -> Result<Response, StatusCode> {
     debug!("Request URI: {}", request.uri());
     if true { // request.uri().path().starts_with(AUTH_CALLBACK)
