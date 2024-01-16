@@ -9,18 +9,19 @@ const STATUS_URL = 'http://localhost:3000/status'
 export const App = () => {
     const [status, setStatus] = useState<ServerStatus | null>(null)
 
-    const fetchStatus = () => {
-        fetch(STATUS_URL)
-            .then(res => res.json())
-            .then(status => setStatus(status))
-            .catch(error => console.warn('--e--> ', error))
-    }
-
     const setScheduling = (scheduling: boolean) => {
         setStatus(Object.assign({}, status, { scheduling }))
     }
 
-    useEffect(() => fetchStatus(), [])
+    useEffect(() => {
+        const es = new EventSource(STATUS_URL)
+        es.onopen = () => console.log('SSE connection opened')
+        es.onerror = (e) => console.log('SSE error:', e)
+        es.onmessage = (e) => {
+            setStatus(JSON.parse(e.data))
+        }
+        return () => es.close();
+    }, [])
 
     if (status == null) {
         return <b>Loading ...</b>

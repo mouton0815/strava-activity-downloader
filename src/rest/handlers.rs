@@ -1,5 +1,5 @@
 use std::convert::Infallible;
-use axum::{BoxError, Json};
+use axum::BoxError;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response, Sse};
@@ -9,8 +9,7 @@ use futures::Stream;
 use log::{info, warn};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt as _; // Enable Iterator trait for BroadcastStream
-use crate::domain::server_status::ServerStatus;
-use crate::rest::paths::{STATUS, STATUS_EVENTS, TOGGLE};
+use crate::rest::paths::{STATUS, TOGGLE};
 use crate::state::shared_state::MutexSharedState;
 
 #[allow(dead_code)]
@@ -28,14 +27,6 @@ fn service_error(error: BoxError) -> StatusCode {
 }
 
 #[debug_handler]
-pub async fn status(State(state): State<MutexSharedState>) -> Result<Json<ServerStatus>, StatusCode> {
-    info!("Enter {}", STATUS);
-    let mut guard = state.lock().await;
-    let server_status = (*guard).get_server_status().await.map_err(service_error)?;
-    Ok(Json(server_status))
-}
-
-#[debug_handler]
 pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Response, StatusCode> {
     info!("Enter {}", TOGGLE);
     let mut guard = state.lock().await;
@@ -45,17 +36,21 @@ pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Response, S
 }
 
 #[debug_handler]
-pub async fn status_events(State(state): State<MutexSharedState>) -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
-    info!("Enter {}", STATUS_EVENTS);
-    let stream = create_stream(&state).await;
+pub async fn status(State(state): State<MutexSharedState>)
+    -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
+    info!("Enter {}", STATUS);
+    let stream = subscribe_and_send_first(&state).await.map_err(service_error)?;
     let stream = stream.map(move |item| {
         Ok::<Event, Infallible>(Event::default().data(item.unwrap()))
     });
-    Sse::new(stream)
+    Ok(Sse::new(stream))
 }
 
-async fn create_stream(state: &MutexSharedState) -> BroadcastStream<String> {
-    let guard = state.lock().await;
+async fn subscribe_and_send_first(state: &MutexSharedState) -> Result<BroadcastStream<String>, BoxError> {
+    let mut guard = state.lock().await;
     let receiver = (*guard).sender.subscribe();
-    BroadcastStream::new(receiver)
+    let server_status = (*guard).get_server_status().await?;
+    let server_status = serde_json::to_string(&server_status)?;
+    (*guard).sender.send(server_status)?;
+    Ok(BroadcastStream::new(receiver))
 }

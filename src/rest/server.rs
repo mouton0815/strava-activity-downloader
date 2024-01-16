@@ -8,9 +8,9 @@ use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
-use crate::rest::handlers::{status, status_events, toggle};
+use crate::rest::handlers::{status, toggle};
 use crate::rest::oauth::{authorize, callback, middleware};
-use crate::rest::paths::{AUTH_CALLBACK, AUTHORIZE, STATUS, STATUS_EVENTS, TOGGLE};
+use crate::rest::paths::{AUTH_CALLBACK, AUTHORIZE, STATUS, TOGGLE};
 use crate::state::shared_state::MutexSharedState;
 
 pub fn spawn_http_server(listener: TcpListener, state: MutexSharedState, mut rx: Receiver<()>, web_dir: &str) -> JoinHandle<()> {
@@ -22,7 +22,6 @@ pub fn spawn_http_server(listener: TcpListener, state: MutexSharedState, mut rx:
 
     let router = Router::new()
         .route(STATUS, get(status))
-        .route(STATUS_EVENTS, get(status_events))
         .route(TOGGLE, get(toggle))
         .route(AUTHORIZE, get(authorize))
         .route(AUTH_CALLBACK, get(callback))
