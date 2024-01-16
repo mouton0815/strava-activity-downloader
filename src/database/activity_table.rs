@@ -18,9 +18,12 @@ const CREATE_ACTIVITY_TABLE : &'static str =
         gpx_fetched INTEGER DEFAULT 0 NOT NULL CHECK (gpx_fetched IN (0, 1))
     )";
 
-const UPSERT_ACTIVITY : &'static str =
+const INSERT_ACTIVITY : &'static str =
     "INSERT INTO activity (id, name, sport_type, start_date, distance, moving_time, total_elevation_gain, average_speed, kudos_count) \
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) \
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
+
+const UPSERT_ACTIVITY : &'static str =
+    concatcp!(INSERT_ACTIVITY, " \
      ON CONFLICT(id) DO \
      UPDATE SET \
        name = excluded.name, \
@@ -30,7 +33,7 @@ const UPSERT_ACTIVITY : &'static str =
        moving_time = excluded.moving_time, \
        total_elevation_gain = excluded.total_elevation_gain, \
        average_speed = excluded.average_speed, \
-       kudos_count = excluded.kudos_count"; // Do NOT update column gpx_fetched
+       kudos_count = excluded.kudos_count"); // Do NOT update column gpx_fetched
 
 const DELETE_ACTIVITY : &'static str =
     "DELETE FROM activity WHERE id = ?";
@@ -47,6 +50,7 @@ const SELECT_STATS : &'static str =
 
 pub struct ActivityTable;
 
+#[allow(dead_code)]
 impl ActivityTable {
     pub fn create_table(conn: &Connection) -> Result<()> {
         debug!("Execute\n{}", CREATE_ACTIVITY_TABLE);
@@ -54,29 +58,20 @@ impl ActivityTable {
         Ok(())
     }
 
-    pub fn upsert(tx: &Transaction, activity: &Activity) -> Result<bool> {
-        debug!("Execute\n{}\nwith: {:?}", UPSERT_ACTIVITY, activity);
-        // Because sqlite does not support DECIMAL and stores FLOATs with many digits after the
-        // dot (https://www.sqlite.org/floatingpoint.html), we need to convert the numbers to int.
-        // The inverse operations are done by row_to_activity() below.
-        let dist_multiplied = (activity.distance.clone() * 10.0) as u64;
-        let speed_multiplied = (activity.average_speed.clone() * 1000.0) as u64;
-        let elev_multiplied = (activity.total_elevation_gain.clone() * 10.0) as u64;
-        let values = params![
-            activity.id, activity.name, activity.sport_type, activity.start_date, dist_multiplied,
-            activity.moving_time, elev_multiplied, speed_multiplied, activity.kudos_count
-        ];
-        Ok(tx.execute(UPSERT_ACTIVITY, values)? == 1)
+    pub fn insert(tx: &Transaction, activity: &Activity) -> Result<()> {
+        Self::execute_for_activity(tx, INSERT_ACTIVITY, activity)
     }
 
-    #[allow(dead_code)]
+    pub fn upsert(tx: &Transaction, activity: &Activity) -> Result<()> {
+        Self::execute_for_activity(tx, UPSERT_ACTIVITY, activity)
+    }
+
     pub fn delete(tx: &Transaction, id: u64) -> Result<bool> {
         debug!("Execute\n{} with: {}", DELETE_ACTIVITY, id);
         let row_count = tx.execute(DELETE_ACTIVITY, params![id])?;
         Ok(row_count == 1)
     }
 
-    #[allow(dead_code)]
     pub fn select_all(tx: &Transaction) -> Result<ActivityVec> {
         debug!("Execute\n{}", SELECT_ACTIVITIES);
         let mut stmt = tx.prepare(SELECT_ACTIVITIES)?;
@@ -90,7 +85,6 @@ impl ActivityTable {
         Ok(activity_vec)
     }
 
-    #[allow(dead_code)]
     pub fn select_by_id(tx: &Transaction, id: u64) -> Result<Option<Activity>> {
         debug!("Execute\n{} with: {}", SELECT_ACTIVITY, id);
         let mut stmt = tx.prepare(SELECT_ACTIVITY)?;
@@ -105,6 +99,21 @@ impl ActivityTable {
         stmt.query_row([], |row | {
             Ok(ActivityStats::new(row.get(0)?, row.get(1)?, row.get(2)?))
         })
+    }
+
+    fn execute_for_activity(tx: &Transaction, query: &str, activity: &Activity) -> Result<()> {
+        debug!("Execute\n{}\nwith: {:?}", query, activity);
+        // Because sqlite does not support DECIMAL and stores FLOATs with many digits after the
+        // dot (https://www.sqlite.org/floatingpoint.html), we need to convert the numbers to int.
+        // The inverse operations are done by row_to_activity() below.
+        let dist_multiplied = (activity.distance.clone() * 10.0) as u64;
+        let speed_multiplied = (activity.average_speed.clone() * 1000.0) as u64;
+        let elev_multiplied = (activity.total_elevation_gain.clone() * 10.0) as u64;
+        let values = params![
+            activity.id, activity.name, activity.sport_type, activity.start_date, dist_multiplied,
+            activity.moving_time, elev_multiplied, speed_multiplied, activity.kudos_count
+        ];
+        tx.execute(query, values).map(|_| ()) // Ignore returned row count
     }
 
     fn row_to_activity(row: &Row) -> Result<Activity> {
@@ -125,10 +134,29 @@ impl ActivityTable {
 
 #[cfg(test)]
 mod tests {
-    use rusqlite::{Connection, Transaction};
+    use rusqlite::Connection;
     use crate::database::activity_table::ActivityTable;
     use crate::domain::activity::Activity;
     use crate::domain::activity_stats::ActivityStats;
+
+    #[test]
+    fn test_insert() {
+        let activity1 = Activity::dummy(1, "foo");
+        let activity2 = Activity::dummy(2, "bar");
+        let activity3 = Activity::dummy(1, "baz");
+
+        let mut conn = create_connection_and_table();
+        let tx = conn.transaction().unwrap();
+        assert!(ActivityTable::insert(&tx, &activity1).is_ok());
+        assert!(ActivityTable::insert(&tx, &activity2).is_ok());
+        assert!(ActivityTable::insert(&tx, &activity3).is_err()); // activity3 collides with activity1
+        assert!(tx.commit().is_ok());
+
+        let ref_activities = [&activity1, &activity2];
+        check_results(&mut conn, &ref_activities);
+        check_single_result(&mut conn, ref_activities[0]);
+        check_single_result(&mut conn, ref_activities[1]);
+    }
 
     #[test]
     fn test_upsert() {
@@ -138,12 +166,12 @@ mod tests {
 
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
-        assert_eq!(upsert(&tx, &activity1), true);
-        assert_eq!(upsert(&tx, &activity2), true);
-        assert_eq!(upsert(&tx, &activity3), false); // activity3 overwrites activity1
+        assert!(ActivityTable::upsert(&tx, &activity1).is_ok());
+        assert!(ActivityTable::upsert(&tx, &activity2).is_ok());
+        assert!(ActivityTable::upsert(&tx, &activity3).is_ok()); // activity3 overwrites activity1
         assert!(tx.commit().is_ok());
 
-        let ref_activities = [&activity3, &activity2]; // activity3 overwrites activity1
+        let ref_activities = [&activity3, &activity2];
         check_results(&mut conn, &ref_activities);
         check_single_result(&mut conn, ref_activities[0]);
         check_single_result(&mut conn, ref_activities[1]);
@@ -205,12 +233,6 @@ mod tests {
         let conn = conn.unwrap();
         assert!(ActivityTable::create_table(&conn).is_ok());
         conn
-    }
-
-    fn upsert(tx: &Transaction, activity: &Activity) -> bool {
-        let result = ActivityTable::upsert(tx, activity);
-        assert!(result.is_ok());
-        result.unwrap()
     }
 
     fn check_results(conn: &mut Connection, ref_activities: &[&Activity]) {

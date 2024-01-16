@@ -22,13 +22,11 @@ impl ActivityService {
     pub fn add(&mut self, activities: &ActivityVec) -> Result<ActivityStats, BoxError> {
         info!("Add {} activities to database", activities.len());
         let tx = self.connection.transaction()?;
-        let mut count : u32 = 0;
+        let count = activities.len() as u32;
         let mut min_time : Option<String> = None;
         let mut max_time : Option<String> = None;
         for activity in activities {
-            if ActivityTable::upsert(&tx, activity)? {
-                count += 1;
-            }
+            ActivityTable::insert(&tx, activity)?;
             // std::cmp::min for Option treats None as minimal value, but we need the timestamp
             min_time = Some(match min_time {
                 Some(time) => std::cmp::min(activity.start_date.clone(), time),
