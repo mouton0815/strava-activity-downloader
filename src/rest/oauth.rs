@@ -1,23 +1,15 @@
-use axum::BoxError;
-use axum::extract::{Query, Request, State};
+use axum::extract::{Query, State};
 use axum::http::StatusCode;
-use axum::middleware::Next;
 use axum::response::{IntoResponse, Redirect, Response};
 use axum_macros::debug_handler;
 use log::{debug, info, warn};
 use serde::Deserialize;
-use crate::Bearer;
 use crate::state::shared_state::MutexSharedState;
 
 #[derive(Deserialize)]
 pub struct CallbackQuery {
     code: String,
     state: String,
-}
-
-async fn get_bearer(state: &MutexSharedState) -> Result<Option<Bearer>, BoxError> {
-    let mut guard = state.lock().await;
-    (*guard).oauth.get_bearer().await
 }
 
 pub async fn authorize(State(state): State<MutexSharedState>) -> Result<Response, StatusCode> {
@@ -54,38 +46,6 @@ pub async fn callback(State(state): State<MutexSharedState>, query: Query<Callba
         }
         Err(_) => {
             Err(StatusCode::UNAUTHORIZED)
-        }
-    }
-}
-
-// TODO: Remove oauth middleware (not needed)
-pub async fn middleware(State(state): State<MutexSharedState>, mut request: Request, next: Next) -> Result<Response, StatusCode> {
-    debug!("Request URI: {}", request.uri());
-    if true { // request.uri().path().starts_with(AUTH_CALLBACK)
-        debug!("Bypass middleware");
-        let response = next.run(request).await;
-        debug!("Response status from next layer: {}", response.status());
-        return Ok(response);
-    }
-    match get_bearer(&state).await {
-        Ok(bearer) => {
-            match bearer {
-                Some(bearer) => {
-                    request.extensions_mut().insert(bearer);
-                    debug!("Delegate to next layer");
-                    let response = next.run(request).await;
-                    debug!("Response status from next layer: {}", response.status());
-                    Ok(response)
-                }
-                None => {
-                    info!("No token, return 401 Unauthorized");
-                    Err(StatusCode::UNAUTHORIZED)
-                }
-            }
-        }
-        Err(error) => {
-            warn!("Error: {}", error);
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }
 }
