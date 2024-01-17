@@ -30,9 +30,17 @@ fn service_error(error: BoxError) -> StatusCode {
 pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Response, StatusCode> {
     info!("Enter {}", TOGGLE);
     let mut guard = state.lock().await;
-    let old_value = (*guard).scheduler_running.clone();
-    (*guard).scheduler_running = !old_value;
-    Ok((*guard).scheduler_running.to_string().into_response())
+    match (*guard).oauth.get_bearer().await.map_err(service_error)? {
+        Some(_) => {
+            let old_value = (*guard).scheduler_running.clone();
+            (*guard).scheduler_running = !old_value;
+            Ok((*guard).scheduler_running.to_string().into_response())
+        },
+        None => {
+            info!("Unauthorized, cannot enable the scheduler");
+            Err(StatusCode::UNAUTHORIZED)
+        }
+    }
 }
 
 #[debug_handler]

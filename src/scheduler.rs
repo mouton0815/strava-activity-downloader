@@ -8,7 +8,7 @@ use crate::Bearer;
 use crate::domain::activity::ActivityVec;
 use crate::state::shared_state::MutexSharedState;
 
-async fn is_running(state: &MutexSharedState) -> bool {
+async fn is_enabled(state: &MutexSharedState) -> bool {
     let guard = state.lock().await;
     (*guard).scheduler_running.clone()
 }
@@ -72,17 +72,15 @@ async fn task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> 
 }
 
 async fn authorize(state: &MutexSharedState) -> Result<(), BoxError> {
-    if is_running(&state).await {
+    if is_enabled(&state).await {
         match get_bearer(&state).await? {
             Some(bearer) => {
-                // TODO: Remove next two lines
-                let bearer: String = bearer.into();
-                debug!("--b--> {}", &bearer.as_str()[..std::cmp::min(100, bearer.as_str().len())]);
                 task(state, bearer.into()).await?;
             }
             None => {
-                // There is no way for the scheduler to do an OAuth auth code flow.
-                debug!("Not authorized yet, skip task execution");
+                // This should not happen because the REST API allows enabling the scheduler only if
+                // authenticated. There is no way for the scheduler to do an OAuth auth code flow.
+                warn!("Not authorized, skip task execution");
             }
         }
     } else {

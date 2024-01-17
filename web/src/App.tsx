@@ -31,7 +31,7 @@ export const App = () => {
         <div>
             <StatusTable status={status} />
             <LoginButton authorized={ status.authorized } />
-            <ToggleButton scheduling={ status.scheduling } setScheduling={setScheduling} />
+            <ToggleButton disabled={ !status.authorized } scheduling={ status.scheduling } setScheduling={setScheduling} />
         </div>
     )
 }
