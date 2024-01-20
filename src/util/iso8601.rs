@@ -1,4 +1,4 @@
-use iso8601_timestamp::{Duration, FormatString, Timestamp, TimestampStr, typenum};
+use iso8601_timestamp::{Duration, Timestamp, typenum};
 
 pub fn string_to_secs(str: &str) -> i64 {
     parse_internal(str).unwrap_or_else(|| panic!("Invalid timestamp: '{str}'"))

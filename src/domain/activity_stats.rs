@@ -14,7 +14,7 @@ impl ActivityStats {
     }
 
     pub fn max_time_as_secs(&self) -> Option<i64> {
-        self.max_time.as_ref().map(iso8601::string_to_secs)
+        self.max_time.as_ref().map(|s| iso8601::string_to_secs(s))
     }
 
     pub fn merge(&mut self, stats: &ActivityStats) {
