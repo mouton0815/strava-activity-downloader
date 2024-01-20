@@ -6,38 +6,25 @@ use crate::util::iso8601::{secs_to_string, string_to_secs};
 
 #[derive(Deserialize)]
 struct LatitudeLongitude {
-    data: Vec<(f32,f32)>,
-    series_type: String,
-    original_size: u32,
-    resolution: String
+    data: Vec<(f32,f32)>
 }
 
 #[derive(Deserialize)]
 struct Altitude {
-    data: Vec<f32>,
-    series_type: String,
-    original_size: u32,
-    resolution: String
+    data: Vec<f32>
 }
 
 // Distances are always included in the activity stream
 #[derive(Deserialize)]
 struct Distance {
-    data: Vec<f32>,
-    series_type: String,
-    original_size: u32,
-    resolution: String
+    data: Vec<f32>
 }
 
 #[derive(Deserialize)]
 struct Time {
-    data: Vec<u32>,
-    series_type: String,
-    original_size: u32,
-    resolution: String
+    data: Vec<u32>
 }
 
-// TODO: Elevation
 #[derive(Deserialize)]
 pub struct ActivityStream {
     latlng: LatitudeLongitude,
@@ -47,7 +34,7 @@ pub struct ActivityStream {
 }
 
 impl ActivityStream {
-    pub fn to_gpx(&self, activity_id: &str, activity_name: &str, start_time: &str) -> Result<String, BoxError> {
+    pub fn to_gpx(&self, activity_id: u64, activity_name: &str, start_time: &str) -> Result<String, BoxError> {
         if self.latlng.data.len() != self.time.data.len() ||
             self.time.data.len() != self.distance.data.len() ||
             self.distance.data.len() != self.altitude.data.len() {
@@ -58,7 +45,7 @@ impl ActivityStream {
         }
     }
 
-    fn to_gpx_internal(&self, activity_id: &str, activity_name: &str, start_time: i64) -> Result<String, fmt::Error> {
+    fn to_gpx_internal(&self, activity_id: u64, activity_name: &str, start_time: i64) -> Result<String, fmt::Error> {
         let mut s = String::new();
         writeln!(&mut s, "<?xml version='1.0' encoding='UTF-8'?>")?;
         writeln!(&mut s, "<gpx xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xmlns='http://www.topografix.com/GPX/1/1' xsi:schemaLocation='http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd' version='1.1' creator='http://strava.com/'>")?;
@@ -71,7 +58,6 @@ impl ActivityStream {
         writeln!(&mut s, "  <trk>")?;
         writeln!(&mut s, "    <name>{}</name>", activity_name)?;
         writeln!(&mut s, "    <trkseg>")?;
-        let mut cumulated_time = start_time;
         for i in 0..self.latlng.data.len() {
             let (lat, lon) = &self.latlng.data[i.clone()];
             let altitude = &self.altitude.data[i.clone()];
@@ -98,6 +84,7 @@ impl std::fmt::Display for ActivityStream {
 mod tests {
     use crate::ActivityStream;
 
+    // Activity streams from java have additional fields like "series_type". They are ignored here.
     static INPUT: &str = r#"{
   "latlng":{"data":[[51.318165,12.375655],[51.318213,12.375588]],"series_type":"foo","original_size":1,"resolution":"bar"},
   "altitude":{"data":[123.456,100.0],"series_type":"foo","original_size":1,"resolution":"bar"},
@@ -133,7 +120,7 @@ mod tests {
     fn test_to_gpx() {
         let stream : serde_json::Result<ActivityStream> = serde_json::from_str(INPUT);
         assert!(stream.is_ok());
-        let result = stream.unwrap().to_gpx("12345", "Foo Bar", "2024-01-01T00:00:00Z");
+        let result = stream.unwrap().to_gpx(12345, "Foo Bar", "2024-01-01T00:00:00Z");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), REFERENCE);
     }
