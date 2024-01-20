@@ -13,6 +13,15 @@ struct LatitudeLongitude {
 }
 
 #[derive(Deserialize)]
+struct Altitude {
+    data: Vec<f32>,
+    series_type: String,
+    original_size: u32,
+    resolution: String
+}
+
+// Distances are always included in the activity stream
+#[derive(Deserialize)]
 struct Distance {
     data: Vec<f32>,
     series_type: String,
@@ -32,6 +41,7 @@ struct Time {
 #[derive(Deserialize)]
 pub struct ActivityStream {
     latlng: LatitudeLongitude,
+    altitude: Altitude,
     distance: Distance,
     time: Time
 }
@@ -39,7 +49,8 @@ pub struct ActivityStream {
 impl ActivityStream {
     pub fn to_gpx(&self, activity_id: &str, activity_name: &str, start_time: &str) -> Result<String, BoxError> {
         if self.latlng.data.len() != self.time.data.len() ||
-            self.time.data.len() != self.distance.data.len() {
+            self.time.data.len() != self.distance.data.len() ||
+            self.distance.data.len() != self.altitude.data.len() {
             Err("Streams have different lengths".into())
         } else {
             let start_time = string_to_secs(start_time);
@@ -62,11 +73,11 @@ impl ActivityStream {
         writeln!(&mut s, "    <trkseg>")?;
         let mut cumulated_time = start_time;
         for i in 0..self.latlng.data.len() {
-            let coords = &self.latlng.data[i.clone()];
+            let (lat, lon) = &self.latlng.data[i.clone()];
+            let altitude = &self.altitude.data[i.clone()];
             let time = self.time.data[i].clone() as i64;
-            writeln!(&mut s, "      <trkpt lat='{}' lon='{}'>", coords.0, coords.1)?;
-            // TODO: Write <time> and <ele> correctly
-            writeln!(&mut s, "        <ele>{}</ele>", 123.45)?;
+            writeln!(&mut s, "      <trkpt lat='{}' lon='{}'>", lat, lon)?;
+            writeln!(&mut s, "        <ele>{:?}</ele>", altitude)?;
             writeln!(&mut s, "        <time>{}</time>", secs_to_string(start_time + time))?;
             writeln!(&mut s, "      </trkpt>")?;
         }
@@ -89,7 +100,8 @@ mod tests {
 
     static INPUT: &str = r#"{
   "latlng":{"data":[[51.318165,12.375655],[51.318213,12.375588]],"series_type":"foo","original_size":1,"resolution":"bar"},
-  "distance":{"data":[0,3],"series_type":"foo","original_size":1,"resolution":"bar"},
+  "altitude":{"data":[123.456,100.0],"series_type":"foo","original_size":1,"resolution":"bar"},
+  "distance":{"data":[0,3.7],"series_type":"foo","original_size":1,"resolution":"bar"},
   "time":{"data":[1,3],"series_type":"foo","original_size":1,"resolution":"bar"}
 }"#;
 
@@ -105,11 +117,11 @@ mod tests {
     <name>Foo Bar</name>
     <trkseg>
       <trkpt lat='51.318165' lon='12.375655'>
-        <ele>123.45</ele>
+        <ele>123.456</ele>
         <time>2024-01-01T00:00:01Z</time>
       </trkpt>
       <trkpt lat='51.318214' lon='12.375588'>
-        <ele>123.45</ele>
+        <ele>100.0</ele>
         <time>2024-01-01T00:00:03Z</time>
       </trkpt>
     </trkseg>
