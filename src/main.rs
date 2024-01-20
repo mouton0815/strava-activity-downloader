@@ -1,9 +1,12 @@
 use std::error::Error;
+use std::io::BufReader;
 use std::time::Duration;
+use axum::BoxError;
 use config::{Config, File};
 use log::info;
 use tokio::join;
 use tokio::sync::broadcast;
+use crate::domain::activity_stream::ActivityStream;
 use crate::oauth::client::OAuthClient;
 use crate::oauth::token::{Bearer, TokenHolder};
 use crate::rest::paths::{AUTH_CALLBACK, STATUS};
@@ -12,6 +15,7 @@ use crate::scheduler::spawn_scheduler;
 use crate::service::activity_service::ActivityService;
 use crate::state::shared_state::SharedState;
 use crate::util::shutdown_signal::shutdown_signal;
+use crate::util::write_gpx::write_gpx;
 
 mod oauth;
 mod rest;
@@ -25,7 +29,16 @@ mod service;
 const CONFIG_YAML : &'static str = "conf/application.yaml";
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>>  {
+async fn main() -> Result<(), BoxError> {
+    env_logger::init();
+    let in_file = std::fs::File::open("ermlich.stream")?;
+    let reader = BufReader::new(in_file);
+    let s : ActivityStream = serde_json::from_reader(reader)?;
+    write_gpx(12345, "Foo", "2024-01-01T00:00:00Z", &s)
+}
+
+#[allow(dead_code)]
+async fn xxx_main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
 
     let config = Config::builder()
