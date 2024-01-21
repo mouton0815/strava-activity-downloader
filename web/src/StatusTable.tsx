@@ -19,8 +19,8 @@ export const StatusTable = ({ status }: StatusTableProps) => (
             <td><b>{ Boolean(status.authorized).toString() }</b></td>
         </tr>
         <tr>
-            <td>Download scheduler running:</td>
-            <td><b>{ Boolean(status.scheduling).toString() }</b></td>
+            <td>Download scheduler status:</td>
+            <td><b>{ schedulerText(status.scheduler_state) }</b></td>
         </tr>
         <tr>
             <td>Number of downloaded activities:</td>
@@ -38,3 +38,10 @@ export const StatusTable = ({ status }: StatusTableProps) => (
     </table>
 )
 
+function schedulerText(status: string): String {
+    switch (status) {
+        case 'Inactive': return 'inactive'
+        case 'DownloadActivities': return 'activity download'
+        case 'DownloadStreams': return 'track download'
+    }
+}

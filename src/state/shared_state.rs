@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use axum::BoxError;
 use tokio::sync::broadcast::Sender;
@@ -9,13 +10,20 @@ use crate::service::activity_service::ActivityService;
 
 // TODO: Unit tests!
 
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub enum SchedulerState {
+    Inactive,
+    DownloadActivities,
+    DownloadStreams
+}
+
 /// State shared between axum handlers and scheduler
 pub struct SharedState {
     pub oauth: OAuthClient,
     pub service: ActivityService,
     pub sender: Sender<String>, // Broadcast sender used by the scheduler to inform the SSE endpoint
     pub activity_stats: Option<ActivityStats>, // Holds last version of DB activity stats
-    pub scheduler_running: bool,
+    pub scheduler_state: SchedulerState,
     pub activities_per_page: u16
 }
 
@@ -31,7 +39,7 @@ impl SharedState {
             service,
             sender,
             activity_stats: None,
-            scheduler_running: false,
+            scheduler_state: SchedulerState::Inactive,
             activities_per_page
         }))
     }
@@ -59,9 +67,9 @@ impl SharedState {
     /// from the [SharedState] or fetches them from database.
     pub async fn get_server_status(&mut self) -> Result<ServerStatus, BoxError> {
         let authorized = self.oauth.get_bearer().await?.is_some();
-        let scheduling = self.scheduler_running.clone();
+        let scheduler_state = self.scheduler_state.clone();
         let activity_stats = self.get_activity_stats().await?;
-        Ok(ServerStatus::new(authorized, scheduling, activity_stats))
+        Ok(ServerStatus::new(authorized, scheduler_state, activity_stats))
     }
 
     async fn get_activity_stats(&mut self) -> Result<ActivityStats, BoxError> {

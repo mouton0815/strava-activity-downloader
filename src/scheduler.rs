@@ -6,18 +6,18 @@ use tokio::task::JoinHandle;
 use tokio::time;
 use crate::{ActivityStream, Bearer};
 use crate::domain::activity::{Activity, ActivityVec};
-use crate::state::shared_state::MutexSharedState;
+use crate::state::shared_state::{MutexSharedState, SchedulerState};
 
 const BASE_URL : &'static str = "https://www.strava.com/api/v3";
 
-async fn is_enabled(state: &MutexSharedState) -> bool {
+async fn get_scheduler_state(state: &MutexSharedState) -> SchedulerState {
     let guard = state.lock().await;
-    (*guard).scheduler_running.clone()
+    (*guard).scheduler_state.clone()
 }
 
-async fn stop_running(state: &MutexSharedState) {
+async fn set_scheduler_state(state: &MutexSharedState, scheduler_state: SchedulerState) {
     let mut guard = state.lock().await;
-    (*guard).scheduler_running = false
+    (*guard).scheduler_state = scheduler_state;
 }
 
 async fn get_bearer(state: &MutexSharedState) -> Result<Option<Bearer>, BoxError> {
@@ -75,9 +75,8 @@ async fn activity_task(state: &MutexSharedState, bearer: String) -> Result<(), B
         .json::<ActivityVec>().await?;
 
     if activities.len() == 0 {
-        // TODO: Switch to GPX download mode instead
-        info!("No further activities, stop executing tasks (can be re-enabled)");
-        stop_running(state).await;
+        info!("No further activities, start downloading activity streams from oldest to youngest");
+        set_scheduler_state(state, SchedulerState::DownloadStreams).await;
     } else {
         add_activities(&state, &activities).await?;
     }
@@ -101,18 +100,26 @@ async fn stream_task(state: &MutexSharedState, bearer: String) -> Result<(), Box
         }
         None => {
             info!("No further activities without GPX, stop executing tasks (can be re-enabled)");
-            stop_running(state).await;
+            set_scheduler_state(state, SchedulerState::Inactive).await;
         }
     }
     Ok(())
 }
 
 async fn try_task(state: &MutexSharedState) -> Result<(), BoxError> {
-    if is_enabled(&state).await {
+    let scheduler_state = get_scheduler_state(state).await;
+    if scheduler_state == SchedulerState::Inactive {
+        debug!("Scheduler disabled, skip task execution");
+    } else {
         match get_bearer(&state).await? {
             Some(bearer) => {
-                stream_task(state, bearer.into()).await?;
-                send_status_event(state).await?; // In all cases send a status event
+                if scheduler_state == SchedulerState::DownloadActivities {
+                    activity_task(state, bearer.into()).await?;
+                } else {
+                    stream_task(state, bearer.into()).await?;
+                }
+                // In all cases send a status event to update the frontend
+                send_status_event(state).await?;
             }
             None => {
                 // This should not happen because the REST API allows enabling the scheduler only if
@@ -120,8 +127,6 @@ async fn try_task(state: &MutexSharedState) -> Result<(), BoxError> {
                 warn!("Not authorized, skip task execution");
             }
         }
-    } else {
-        debug!("Scheduler disabled, skip task execution");
     }
     Ok(())
 }
