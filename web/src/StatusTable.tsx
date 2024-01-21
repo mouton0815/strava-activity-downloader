@@ -15,7 +15,7 @@ export const StatusTable = ({ status }: StatusTableProps) => (
             <th colSpan={2}>Server status</th>
         </tr>
         <tr>
-            <td>Logged in to Strava:</td>
+            <td>Connected with Strava:</td>
             <td><b>{ Boolean(status.authorized).toString() }</b></td>
         </tr>
         <tr>
@@ -27,7 +27,7 @@ export const StatusTable = ({ status }: StatusTableProps) => (
             <td><b>{ status.activity_stats.count }</b></td>
         </tr>
         <tr>
-            <td>Date earliest downloaded activity:</td>
+            <td>Date of earliest downloaded activity:</td>
             <td><b>{ extractDate(status.activity_stats.min_time) }</b></td>
         </tr>
         <tr>
