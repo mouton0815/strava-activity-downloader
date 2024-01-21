@@ -38,11 +38,17 @@ const UPSERT_ACTIVITY : &'static str =
 const DELETE_ACTIVITY : &'static str =
     "DELETE FROM activity WHERE id = ?";
 
+const UPDATE_GPX_COLUMN : &'static str =
+    "UPDATE activity SET gpx_fetched = 1 WHERE id = ?";
+
 const SELECT_ACTIVITIES : &'static str =
     "SELECT id, name, sport_type, start_date, distance, moving_time, total_elevation_gain, average_speed, kudos_count FROM activity";
 
 const SELECT_ACTIVITY : &'static str =
     concatcp!(SELECT_ACTIVITIES, " WHERE id = ?");
+
+const SELECT_EARLIEST_ACTIVITY_WITHOUT_GPX : &'static str =
+    concatcp!(SELECT_ACTIVITIES, " WHERE gpx_fetched = 0 and start_date = (SELECT MIN(start_date) from activity WHERE gpx_fetched = 0)");
 
 const SELECT_STATS : &'static str =
     "SELECT COUNT(*), MIN(start_date), MAX(start_date) FROM activity";
@@ -72,6 +78,12 @@ impl ActivityTable {
         Ok(row_count == 1)
     }
 
+    pub fn update_gpx_column(tx: &Transaction, id: u64) -> Result<bool> {
+        debug!("Execute\n{} with: {}", UPDATE_GPX_COLUMN, id);
+        let row_count = tx.execute(UPDATE_GPX_COLUMN, params![id])?;
+        Ok(row_count == 1)
+    }
+
     pub fn select_all(tx: &Transaction) -> Result<ActivityVec> {
         debug!("Execute\n{}", SELECT_ACTIVITIES);
         let mut stmt = tx.prepare(SELECT_ACTIVITIES)?;
@@ -89,6 +101,14 @@ impl ActivityTable {
         debug!("Execute\n{} with: {}", SELECT_ACTIVITY, id);
         let mut stmt = tx.prepare(SELECT_ACTIVITY)?;
         stmt.query_row([id], |row | {
+            Ok(Self::row_to_activity(row)?)
+        }).optional()
+    }
+
+    pub fn select_earliest_without_gpx(tx: &Transaction) -> Result<Option<Activity>> {
+        debug!("Execute\n{}", SELECT_EARLIEST_ACTIVITY_WITHOUT_GPX);
+        let mut stmt = tx.prepare(SELECT_EARLIEST_ACTIVITY_WITHOUT_GPX)?;
+        stmt.query_row([], |row | {
             Ok(Self::row_to_activity(row)?)
         }).optional()
     }
@@ -203,7 +223,58 @@ mod tests {
     }
 
     #[test]
-    fn select_maximum_start_date() {
+    fn test_update_gpx_column() {
+        let mut conn = create_connection_and_table();
+        let tx = conn.transaction().unwrap();
+        assert!(ActivityTable::insert(&tx, &Activity::dummy(1, "foo")).is_ok());
+        let result = ActivityTable::update_gpx_column(&tx, 1);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), true);
+        assert!(tx.commit().is_ok());
+    }
+
+    #[test]
+    fn test_update_gpx_column_missing() {
+        let mut conn = create_connection_and_table();
+        let tx = conn.transaction().unwrap();
+        let result = ActivityTable::update_gpx_column(&tx, 1);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), false);
+        assert!(tx.commit().is_ok());
+    }
+
+    #[test]
+    fn test_earliest_without_gpx() {
+        let activity1 = Activity::dummy(1, "2018-02-20T18:02:13Z");
+        let activity2 = Activity::dummy(2, "2018-02-20T18:02:12Z");
+        let activity3 = Activity::dummy(3, "2018-02-20T18:02:11Z");
+
+        let mut conn = create_connection_and_table();
+        let tx = conn.transaction().unwrap();
+        ActivityTable::upsert(&tx, &activity1).unwrap();
+        ActivityTable::upsert(&tx, &activity2).unwrap();
+        ActivityTable::upsert(&tx, &activity3).unwrap();
+        ActivityTable::update_gpx_column(&tx, 3).unwrap(); // Earliest activity already has a GPX track
+
+        let result = ActivityTable::select_earliest_without_gpx(&tx);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), Some(activity2));
+        assert!(tx.commit().is_ok());
+    }
+
+    #[test]
+    fn test_earliest_without_gpx_missing() {
+        let mut conn = create_connection_and_table();
+        let tx = conn.transaction().unwrap();
+
+        let result = ActivityTable::select_earliest_without_gpx(&tx);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), None);
+        assert!(tx.commit().is_ok());
+    }
+
+    #[test]
+    fn test_select_stats() {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
         ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:13Z")).unwrap();
@@ -218,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn select_stats_missing() {
+    fn test_select_stats_missing() {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
 
