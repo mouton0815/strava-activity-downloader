@@ -4,9 +4,11 @@ use axum::BoxError;
 use tokio::sync::broadcast::Receiver;
 use tokio::task::JoinHandle;
 use tokio::time;
-use crate::Bearer;
-use crate::domain::activity::ActivityVec;
+use crate::{ActivityStream, Bearer};
+use crate::domain::activity::{Activity, ActivityVec};
 use crate::state::shared_state::MutexSharedState;
+
+const BASE_URL : &'static str = "https://www.strava.com/api/v3";
 
 async fn is_enabled(state: &MutexSharedState) -> bool {
     let guard = state.lock().await;
@@ -47,12 +49,25 @@ async fn send_status_event(state: &MutexSharedState) -> Result<(), BoxError> {
     Ok(())
 }
 
-async fn task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
+async fn get_earliest_activity_without_gpx(state: &MutexSharedState) -> Result<Option<Activity>, BoxError> {
+    let mut guard = state.lock().await;
+    (*guard).service.get_earliest_without_gpx()
+}
+
+async fn store_gpx(state: &MutexSharedState, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
+    let mut guard = state.lock().await;
+    (*guard).service.store_gpx(activity, stream)
+}
+
+
+/// Downloads activities from Strava and stores them in the database
+#[allow(dead_code)]
+async fn activity_task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
     let (max_time, per_page) = get_query_params(state).await?;
     let query = vec![("after", max_time),("per_page", per_page)];
 
     let activities : ActivityVec = reqwest::Client::new()
-        .get("https://www.strava.com/api/v3/athlete/activities")
+        .get(format!("{BASE_URL}/athlete/activities"))
         .header(reqwest::header::AUTHORIZATION, bearer)
         .query(&query)
         .send().await?
@@ -60,14 +75,35 @@ async fn task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> 
         .json::<ActivityVec>().await?;
 
     if activities.len() == 0 {
+        // TODO: Switch to GPX download mode instead
         info!("No further activities, stop executing tasks (can be re-enabled)");
         stop_running(state).await;
     } else {
         add_activities(&state, &activities).await?;
     }
 
-    // In all cases send a status event, e.g. to inform the scheduler disabling
-    send_status_event(state).await?;
+    Ok(())
+}
+
+/// Downloads an activity stream from Strava, transforms it to GPX, and stores it as file
+async fn stream_task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
+    match get_earliest_activity_without_gpx(state).await? {
+        Some(activity) => {
+            let url = format!("{BASE_URL}/activities/{}/streams?keys=time,latlng,altitude&key_by_type=true", activity.id);
+            let stream : ActivityStream = reqwest::Client::new()
+                .get(&url)
+                .header(reqwest::header::AUTHORIZATION, bearer)
+                .send().await?
+                .error_for_status()?
+                .json::<ActivityStream>().await?;
+
+            store_gpx(state, &activity, &stream).await?;
+        }
+        None => {
+            info!("No further activities without GPX, stop executing tasks (can be re-enabled)");
+            stop_running(state).await;
+        }
+    }
     Ok(())
 }
 
@@ -75,7 +111,8 @@ async fn try_task(state: &MutexSharedState) -> Result<(), BoxError> {
     if is_enabled(&state).await {
         match get_bearer(&state).await? {
             Some(bearer) => {
-                task(state, bearer.into()).await?;
+                stream_task(state, bearer.into()).await?;
+                send_status_event(state).await?; // In all cases send a status event
             }
             None => {
                 // This should not happen because the REST API allows enabling the scheduler only if

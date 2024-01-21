@@ -2,8 +2,9 @@ use std::error::Error;
 use axum::BoxError;
 use log::{debug, info};
 use rusqlite::Connection;
+use crate::{ActivityStream, write_gpx};
 use crate::database::activity_table::ActivityTable;
-use crate::domain::activity::ActivityVec;
+use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
 
 pub struct ActivityService {
@@ -44,6 +45,25 @@ impl ActivityService {
         tx.commit()?;
         debug!("Read activity stats {:?} from database", stats);
         Ok(stats)
+    }
+
+    pub fn get_earliest_without_gpx(&mut self) -> Result<Option<Activity>, BoxError> {
+        let tx = self.connection.transaction()?;
+        let activity = ActivityTable::select_earliest_without_gpx(&tx)?;
+        tx.commit()?;
+        debug!("Earliest activity without GPX: {:?}", activity);
+        Ok(activity)
+    }
+
+    pub fn store_gpx(&mut self, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
+        // Store GPX file ...
+        write_gpx(activity, stream)?;
+        // ... then mark corresponding database row
+        let tx = self.connection.transaction()?;
+        let result = ActivityTable::update_gpx_column(&tx, activity.id.clone())?;
+        tx.commit()?;
+        debug!("Marked 'GPX fetched' for activity {} with result {result}", activity.id);
+        Ok(())
     }
 }
 

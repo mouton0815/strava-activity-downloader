@@ -1,7 +1,5 @@
 use std::error::Error;
-use std::io::BufReader;
 use std::time::Duration;
-use axum::BoxError;
 use config::{Config, File};
 use log::info;
 use tokio::join;
@@ -28,17 +26,20 @@ mod service;
 
 const CONFIG_YAML : &'static str = "conf/application.yaml";
 
+/*
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
     env_logger::init();
     let in_file = std::fs::File::open("ermlich.stream")?;
     let reader = BufReader::new(in_file);
-    let s : ActivityStream = serde_json::from_reader(reader)?;
-    write_gpx(12345, "Foo", "2024-01-01T00:00:00Z", &s)
+    let stream: ActivityStream = serde_json::from_reader(reader)?;
+    let activity = Activity::new(12345, "2024-01-01T00:00:00Z");
+    write_gpx(12345, "Foo", "2024-01-01T00:00:00Z", &stream)
 }
+ */
 
-#[allow(dead_code)]
-async fn xxx_main() -> Result<(), Box<dyn Error>>  {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>>  {
     env_logger::init();
 
     let config = Config::builder()
