@@ -9,15 +9,16 @@ const STATUS_URL = 'http://localhost:3000/status'
 export const App = () => {
     const [status, setStatus] = useState<ServerStatus | null>(null)
 
-    const setScheduling = (scheduling: boolean) => {
-        setStatus(Object.assign({}, status, { scheduling }))
+    const setSchedulerState = (scheduler_state: string) => {
+        setStatus(Object.assign({}, status, { scheduler_state }))
     }
 
     useEffect(() => {
         const es = new EventSource(STATUS_URL)
         es.onopen = () => console.log('SSE connection opened')
-        es.onerror = (e) => console.log('SSE error:', e)
+        es.onerror = (e) => console.warn('SSE error:', e)
         es.onmessage = (e) => {
+            console.log('SSE:', e.data)
             setStatus(JSON.parse(e.data))
         }
         return () => es.close();
@@ -31,7 +32,7 @@ export const App = () => {
         <div>
             <StatusTable status={status} />
             <LoginButton authorized={ status.authorized } />
-            <ToggleButton disabled={ !status.authorized } scheduling={ status.scheduling } setScheduling={setScheduling} />
+            <ToggleButton disabled={ !status.authorized } schedulerState={ status.scheduler_state } setSchedulerState={setSchedulerState} />
         </div>
     )
 }
