@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(Clone, Deserialize, Debug, PartialEq)]
 pub struct Activity {
     pub id: u64,
     pub name: String,
@@ -18,7 +18,6 @@ pub type ActivityVec = Vec<Activity>;
 #[cfg(test)]
 mod tests {
     use crate::domain::activity::Activity;
-    use crate::util::serde_and_verify::tests::serde_and_verify;
 
     impl Activity {
         /// Convenience function that takes &str literals
@@ -42,12 +41,5 @@ mod tests {
         pub fn dummy(id: u64, start_date: &str) -> Self {
             Self::new(id, "foo", "walk", start_date, 310.4, 1005, 100.9, 3.558, 3)
         }
-    }
-
-    #[test]
-    fn test_serde() {
-        let activity = Activity::dummy(1, "n/a");
-        let json_ref = r#"{"id":1,"name":"foo","sport_type":"walk","start_date":"n/a","distance":310.4,"moving_time":1005,"total_elevation_gain":100.9,"average_speed":3.558,"kudos_count":3}"#;
-        serde_and_verify(&activity, json_ref);
     }
 }
