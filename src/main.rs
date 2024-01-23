@@ -5,6 +5,7 @@ use log::info;
 use tokio::join;
 use tokio::sync::broadcast;
 use crate::domain::activity_stream::ActivityStream;
+use crate::domain::server_status::ServerStatus;
 use crate::oauth::client::OAuthClient;
 use crate::oauth::token::{Bearer, TokenHolder};
 use crate::rest::rest_paths::{AUTH_CALLBACK, STATUS};
@@ -70,7 +71,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let rx_term2 = tx_term.subscribe();
 
     // Channel for sending data from the producer to the SSE handler
-    let (tx_data, _rx_data) = broadcast::channel::<String>(3);
+    let (tx_data, _rx_data) = broadcast::channel::<ServerStatus>(3);
 
     let state = SharedState::new(client, service, tx_data, activities_per_page);
 

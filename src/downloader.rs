@@ -44,7 +44,6 @@ async fn send_status_event(state: &MutexSharedState) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
     if (*guard).sender.receiver_count() > 0 {
         let status = (*guard).get_server_status().await?;
-        let status = serde_json::to_string(&status)?;
         (*guard).sender.send(status)?;
     }
     Ok(())

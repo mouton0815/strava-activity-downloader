@@ -14,7 +14,7 @@ use crate::service::activity_service::ActivityService;
 pub struct SharedState {
     pub oauth: OAuthClient,
     pub service: ActivityService,
-    pub sender: Sender<String>, // Broadcast sender used by the downloader to inform the SSE endpoint
+    pub sender: Sender<ServerStatus>, // Broadcast sender used by the downloader to inform the SSE endpoint
     pub activity_stats: Option<ActivityStats>, // Holds last version of DB activity stats
     pub download_state: DownloadState,
     pub activities_per_page: u16
@@ -25,7 +25,7 @@ pub type MutexSharedState = Arc<Mutex<SharedState>>;
 impl SharedState {
     pub fn new(oauth: OAuthClient,
                service: ActivityService,
-               sender: Sender<String>,
+               sender: Sender<ServerStatus>,
                activities_per_page: u16) -> MutexSharedState {
         Arc::new(Mutex::new(Self {
             oauth,

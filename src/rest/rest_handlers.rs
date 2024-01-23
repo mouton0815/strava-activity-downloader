@@ -1,5 +1,4 @@
-use std::convert::Infallible;
-use axum::{BoxError, Json};
+use axum::{BoxError, Error, Json};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::Sse;
@@ -10,6 +9,7 @@ use log::{info, warn};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt; // Enable Iterator trait for BroadcastStream
 use crate::domain::download_state::DownloadState;
+use crate::domain::server_status::ServerStatus;
 use crate::rest::rest_paths::{STATUS, TOGGLE};
 use crate::state::shared_state::MutexSharedState;
 
@@ -49,20 +49,19 @@ pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Json<Downlo
 
 #[debug_handler]
 pub async fn status(State(state): State<MutexSharedState>)
-    -> Result<Sse<impl Stream<Item = Result<Event, Infallible>>>, StatusCode> {
+    -> Result<Sse<impl Stream<Item = Result<Event, Error>>>, StatusCode> {
     info!("Enter {}", STATUS);
     let stream = subscribe_and_send_first(&state).await.map_err(service_error)?;
     let stream = stream.map(move |item| {
-        Ok::<Event, Infallible>(Event::default().data(item.unwrap()))
+        Event::default().json_data(item.unwrap())
     });
     Ok(Sse::new(stream))
 }
 
-async fn subscribe_and_send_first(state: &MutexSharedState) -> Result<BroadcastStream<String>, BoxError> {
+async fn subscribe_and_send_first(state: &MutexSharedState) -> Result<BroadcastStream<ServerStatus>, BoxError> {
     let mut guard = state.lock().await;
     let receiver = (*guard).sender.subscribe();
     let status = (*guard).get_server_status().await?;
-    let status = serde_json::to_string(&status)?;
     (*guard).sender.send(status)?;
     Ok(BroadcastStream::new(receiver))
 }
