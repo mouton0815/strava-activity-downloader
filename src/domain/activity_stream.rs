@@ -74,8 +74,8 @@ impl ActivityStream {
     }
 }
 
-impl std::fmt::Display for ActivityStream {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Display for ActivityStream {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "--->{}, {}, {}<---", self.latlng.data.len(), self.distance.data.len(), self.time.data.len())
     }
 }
