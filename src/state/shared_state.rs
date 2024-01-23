@@ -1,29 +1,22 @@
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use axum::BoxError;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use crate::domain::activity_stats::ActivityStats;
+use crate::domain::download_state::DownloadState;
 use crate::domain::server_status::ServerStatus;
 use crate::OAuthClient;
 use crate::service::activity_service::ActivityService;
 
 // TODO: Unit tests!
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
-pub enum SchedulerState {
-    Inactive,
-    DownloadActivities,
-    DownloadStreams
-}
-
-/// State shared between axum handlers and scheduler
+/// State shared between axum handlers and downloader
 pub struct SharedState {
     pub oauth: OAuthClient,
     pub service: ActivityService,
-    pub sender: Sender<String>, // Broadcast sender used by the scheduler to inform the SSE endpoint
+    pub sender: Sender<String>, // Broadcast sender used by the downloader to inform the SSE endpoint
     pub activity_stats: Option<ActivityStats>, // Holds last version of DB activity stats
-    pub scheduler_state: SchedulerState,
+    pub download_state: DownloadState,
     pub activities_per_page: u16
 }
 
@@ -39,7 +32,7 @@ impl SharedState {
             service,
             sender,
             activity_stats: None,
-            scheduler_state: SchedulerState::Inactive,
+            download_state: DownloadState::Inactive,
             activities_per_page
         }))
     }
@@ -67,9 +60,9 @@ impl SharedState {
     /// from the [SharedState] or fetches them from database.
     pub async fn get_server_status(&mut self) -> Result<ServerStatus, BoxError> {
         let authorized = self.oauth.get_bearer().await?.is_some();
-        let scheduler_state = self.scheduler_state.clone();
+        let download_state = self.download_state.clone();
         let activity_stats = self.get_activity_stats().await?;
-        Ok(ServerStatus::new(authorized, scheduler_state, activity_stats))
+        Ok(ServerStatus::new(authorized, download_state, activity_stats))
     }
 
     async fn get_activity_stats(&mut self) -> Result<ActivityStats, BoxError> {

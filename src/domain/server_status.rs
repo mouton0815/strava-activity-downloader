@@ -1,16 +1,17 @@
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use crate::domain::activity_stats::ActivityStats;
-use crate::state::shared_state::SchedulerState;
+use crate::domain::download_state::DownloadState;
 
-#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+/// Object passed from downloader to SSE handler and result returned by the /status endpoint
+#[derive(Clone, Serialize, Debug, PartialEq)]
 pub struct ServerStatus {
     authorized: bool,
-    scheduler_state: SchedulerState,
+    download_state: DownloadState,
     activity_stats: ActivityStats
 }
 
 impl ServerStatus {
-    pub fn new(authorized: bool, scheduler_state: SchedulerState, activity_stats: ActivityStats) -> Self {
-        Self { authorized, scheduler_state, activity_stats }
+    pub fn new(authorized: bool, download_state: DownloadState, activity_stats: ActivityStats) -> Self {
+        Self { authorized, download_state, activity_stats }
     }
 }

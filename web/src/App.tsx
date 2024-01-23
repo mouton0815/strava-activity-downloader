@@ -9,8 +9,8 @@ const STATUS_URL = 'http://localhost:3000/status'
 export const App = () => {
     const [status, setStatus] = useState<ServerStatus | null>(null)
 
-    const setSchedulerState = (scheduler_state: string) => {
-        setStatus(Object.assign({}, status, { scheduler_state }))
+    const setDownloadState = (download_state: string) => {
+        setStatus(Object.assign({}, status, { download_state }))
     }
 
     useEffect(() => {
@@ -32,7 +32,7 @@ export const App = () => {
         <div>
             <StatusTable status={status} />
             <LoginButton authorized={ status.authorized } />
-            <ToggleButton disabled={ !status.authorized } schedulerState={ status.scheduler_state } setSchedulerState={setSchedulerState} />
+            <ToggleButton disabled={ !status.authorized } downloadState={ status.download_state } setDownloadState={setDownloadState} />
         </div>
     )
 }

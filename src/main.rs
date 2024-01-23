@@ -9,7 +9,7 @@ use crate::oauth::client::OAuthClient;
 use crate::oauth::token::{Bearer, TokenHolder};
 use crate::rest::rest_paths::{AUTH_CALLBACK, STATUS};
 use crate::rest::http_server::spawn_http_server;
-use crate::scheduler::spawn_scheduler;
+use crate::downloader::spawn_download_scheduler;
 use crate::service::activity_service::ActivityService;
 use crate::state::shared_state::SharedState;
 use crate::util::shutdown_signal::shutdown_signal;
@@ -17,7 +17,7 @@ use crate::util::write_gpx::write_gpx;
 
 mod oauth;
 mod rest;
-mod scheduler;
+mod downloader;
 mod database;
 mod domain;
 mod util;
@@ -50,7 +50,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let port = config.get_int("server.port").unwrap_or(3000) as u16;
     let scopes : Vec<String> = config.get_array("oauth.scopes").unwrap_or(Vec::new())
         .iter().map(|v| v.clone().into_string().expect(CONFIG_YAML)).collect();
-    let period = config.get_int("scheduler.period").unwrap_or(10) as u64;
+    let period = config.get_int("downloader.period").unwrap_or(10) as u64;
     let activities_per_page = config.get_int("strava.activities_per_page").unwrap_or(30) as u16;
     let web_dir = format!("{}/web/dist", std::env::var("CARGO_MANIFEST_DIR").unwrap());
 
@@ -75,7 +75,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     let state = SharedState::new(client, service, tx_data, activities_per_page);
 
     let period = Duration::from_secs(period);
-    let scheduler = spawn_scheduler(state.clone(), rx_term1, period);
+    let downloader = spawn_download_scheduler(state.clone(), rx_term1, period);
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
     let http_server = spawn_http_server(listener, state.clone(), rx_term2, &web_dir);
@@ -84,8 +84,8 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     info!("Termination signal received");
     tx_term.send(())?;
 
-    let (_,_) = join!(scheduler, http_server);
-    info!("Scheduler terminated");
+    let (_,_) = join!(downloader, http_server);
+    info!("Downloader terminated");
     info!("HTTP Server terminated");
 
     Ok(())

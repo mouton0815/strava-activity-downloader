@@ -2,16 +2,8 @@ server:
   host: "localhost"
   port: 3000
 
-oauth:
-  client_id: "80058"
-  client_secret: "28ca2e99293fc579bc3365b7e1c83bf571006a6a"
-  auth_url: "https://www.strava.com/oauth/authorize"
-  token_url: "https://www.strava.com/oauth/token"
-  target_url: "http://localhost:5173" # Redirect to after authentication
-  scopes:
-    - activity:read_all
 
-scheduler:
+downloader:
   period: 10
 
 strava:

@@ -6,6 +6,6 @@ type ActivityStats = {
 
 export type ServerStatus = {
     authorized: boolean,
-    scheduler_state: string,
+    download_state: string,
     activity_stats: ActivityStats
 }

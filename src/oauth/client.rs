@@ -98,6 +98,7 @@ impl OAuthClient {
 
         info!("Obtained token");
         debug!("{:?}", token);
+        debug!("BEARER {}", token.access_token().secret());
 
         Ok(TokenHolder::new(token))
     }
