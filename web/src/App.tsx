@@ -1,5 +1,5 @@
 import {useEffect, useState} from 'react'
-import {ServerStatus} from './Status'
+import {ServerStatus} from './ServerStatus'
 import {LoginButton} from './LoginButton'
 import {ToggleButton} from './ToggleButton'
 import {StatusTable} from "./StatusTable";
@@ -25,7 +25,7 @@ export const App = () => {
     }, [])
 
     if (status == null) {
-        return <b>Loading ...</b>
+        return <b>Waiting for data from server...</b>
     }
 
     return (

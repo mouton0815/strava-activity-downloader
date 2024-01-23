@@ -23,7 +23,7 @@ impl ActivityService {
     pub fn add(&mut self, activities: &ActivityVec) -> Result<ActivityStats, BoxError> {
         info!("Add {} activities to database", activities.len());
         let tx = self.connection.transaction()?;
-        let count = activities.len() as u32;
+        let act_count = activities.len() as u32;
         let mut min_time : Option<String> = None;
         let mut max_time : Option<String> = None;
         for activity in activities {
@@ -36,7 +36,7 @@ impl ActivityService {
             max_time = std::cmp::max(Some(activity.start_date.clone()), max_time);
         }
         tx.commit()?;
-        Ok(ActivityStats::new(count, min_time, max_time))
+        Ok(ActivityStats::new(act_count, 0, min_time, max_time))
     }
 
     pub fn get_stats(&mut self) -> Result<ActivityStats, BoxError> {
@@ -79,7 +79,7 @@ mod tests {
         let mut service = create_service();
         let stats = service.add(&vec);
         assert!(stats.is_ok());
-        assert_eq!(stats.unwrap(), ActivityStats::new(0, None, None));
+        assert_eq!(stats.unwrap(), ActivityStats::new(0, 0, None, None));
     }
 
     #[test]
@@ -93,7 +93,7 @@ mod tests {
         let stats = service.add(&vec);
         assert!(stats.is_ok());
         assert_eq!(stats.unwrap(), ActivityStats::new(
-            3, Some("2018-02-20T18:02:12Z".to_string()), Some("2018-02-20T18:02:15Z".to_string())));
+            3, 0, Some("2018-02-20T18:02:12Z".to_string()), Some("2018-02-20T18:02:15Z".to_string())));
         //assert_eq!(stats.unwrap(), Some(1519149735)); // 2018-02-20T18:02:12Z
     }
 

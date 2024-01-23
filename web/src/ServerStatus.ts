@@ -1,5 +1,6 @@
 type ActivityStats = {
-    count: number,
+    act_count: number,
+    trk_count: number,
     min_time: string | null,
     max_time: string | null
 }

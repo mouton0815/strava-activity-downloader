@@ -1,4 +1,4 @@
-import {ServerStatus} from './Status'
+import {ServerStatus} from './ServerStatus'
 
 type StatusTableProps = {
     status: ServerStatus
@@ -24,7 +24,11 @@ export const StatusTable = ({ status }: StatusTableProps) => (
         </tr>
         <tr>
             <td>Number of downloaded activities:</td>
-            <td><b>{ status.activity_stats.count }</b></td>
+            <td><b>{ status.activity_stats.act_count }</b></td>
+        </tr>
+        <tr>
+            <td>Number of downloaded tracks:</td>
+            <td><b>{ status.activity_stats.trk_count }</b></td>
         </tr>
         <tr>
             <td>Date of earliest downloaded activity:</td>
