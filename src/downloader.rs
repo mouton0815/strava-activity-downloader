@@ -6,6 +6,7 @@ use tokio::task::JoinHandle;
 use tokio::time;
 use crate::{ActivityStream, Bearer};
 use crate::domain::activity::{Activity, ActivityVec};
+use crate::domain::activity_stats::ActivityStats;
 use crate::domain::download_state::DownloadState;
 use crate::state::shared_state::MutexSharedState;
 
@@ -56,12 +57,12 @@ async fn get_earliest_activity_without_gpx(state: &MutexSharedState) -> Result<O
 
 async fn store_gpx(state: &MutexSharedState, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    (*guard).service.store_gpx(activity, stream)
+    (*guard).service.store_gpx(activity, stream)?;
+    (*guard).merge_activity_stats(&ActivityStats::new(0, 1, None, None));
+    Ok(())
 }
 
-
 /// Downloads activities from Strava and stores them in the database
-#[allow(dead_code)]
 async fn activity_task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
     let (max_time, per_page) = get_query_params(state).await?;
     let query = vec![("after", max_time),("per_page", per_page)];
