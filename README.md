@@ -15,16 +15,62 @@ The server can be controlled by a React UI, which is also part of this project.
 It takes care of authenticating the application with Strava, lets you start and stop the downloading,
 and shows the download progress.
 
-TODO: Screenshot
+<img src="screenshot.png" alt="Screenshot of the web application" style="width:250px;"/>
 
-## Installation
-You need Rust with `cargo` for the server
-and [Node.js](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) with `npm` for the UI.
+## Preconditions
+### Required Tools
+You need
+* Rust with `cargo` for the server.
+* [Node.js](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) with `npm` for the UI.
+* Optionally [sqlite3](https://www.sqlite.org) for querying the local DB.
 
+### Strava API Client
+To connect to Strava, you need a Strava API client.
+If you don't have one already, you can register a new API client at https://www.strava.com/settings/api.
 
-TODOs
-* Remove application.yml and change credentials
-* Move server part to subdir
-* Server Sent Events
-* Download GPX
-* Count downloaded GPXs and show in UI
+Make sure that the `Authorization Callback Domain` of your client is `localhost:2525`.
+
+You will need values for `Client ID` and `Client Secret` of your API client for configuring the server (see below).
+
+## Setup
+
+### Build the Server
+```shell
+cargo build
+```
+
+### Configure the Server
+Create a server configuration from the template:
+```shell
+cp conf/application.yaml.example conf/application.yaml
+```
+Then edit `conf/application.yaml` and set the `Client ID` and `Client Secret` of your Strava API client:
+```yaml
+oauth:
+  client_id: "<your-strava-client-id>"
+  client_secret: "<your-strava-client-secret>"
+```
+
+### Build the Web UI
+```shell
+cd web
+npm install
+npm run build
+cd ..
+```
+
+## Running
+
+Start the server:
+```shell
+RUST_LOG=info cargo run 
+```
+Then point your browser to http://localhost:2525 and start downloading your activities!
+
+It is also possible to run the web UI in vite's [preview mode](https://vitejs.dev/guide/cli#vite-preview).
+The preview server runs at port `2020`. To ensure that the Rust server redirects to the vite preview server
+after authenticating with Strava, the `target_url` configured in `conf/application.yaml` should be
+```yaml
+oauth:
+  target_url: "http://localhost:2020" # Redirect to after authentication
+```
