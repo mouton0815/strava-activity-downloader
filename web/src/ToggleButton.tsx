@@ -2,7 +2,7 @@ type ToggleButtonProps = {
     toggleUrl: string
     disabled: boolean,
     downloadState: string,
-    setDownloadState (state: string)
+    setDownloadState (state: string): void
 }
 
 export const ToggleButton = ({ toggleUrl, disabled, downloadState, setDownloadState }: ToggleButtonProps) => {

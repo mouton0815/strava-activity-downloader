@@ -42,10 +42,11 @@ export const StatusTable = ({ status }: StatusTableProps) => (
     </table>
 )
 
-function downloaderText(status: string): String {
+function downloaderText(status: string): string {
     switch (status) {
         case 'Inactive': return 'inactive'
         case 'Activities': return 'activity download'
         case 'Tracks': return 'track download'
+        default: throw new Error('Illegal state')
     }
 }

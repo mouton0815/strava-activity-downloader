@@ -4,7 +4,7 @@ type LoginButtonProps = {
 }
 
 export const LoginButton = ({ loginUrl, authorized }: LoginButtonProps) => (
-    <button disabled={authorized} onClick={() => { window.location = loginUrl }}>
+    <button disabled={authorized} onClick={() => { window.location.href = loginUrl }}>
         Connect with Strava
     </button>
 )
