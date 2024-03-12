@@ -4,7 +4,7 @@ import {LoginButton} from './LoginButton'
 import {ToggleButton} from './ToggleButton'
 import {StatusTable} from "./StatusTable";
 
-const STATUS_URL = 'http://localhost:3000/status'
+const STATUS_URL = 'http://localhost:2525/status'
 
 export const App = () => {
     const [status, setStatus] = useState<ServerStatus | null>(null)

@@ -1,4 +1,4 @@
-const TOGGLE_URL = 'http://localhost:3000/toggle'
+const TOGGLE_URL = 'http://localhost:2525/toggle'
 
 type ToggleButtonProps = {
     disabled: boolean,
@@ -10,7 +10,7 @@ export const ToggleButton = ({ disabled, downloadState, setDownloadState }: Togg
     const toggle = () => fetch(TOGGLE_URL)
         .then(res => res.text())
         .then(result => setDownloadState(JSON.parse(result)))
-        .catch(error => console.warn('--e--> ', error))
+        .catch(error => console.warn(error))
 
     return (
         <button disabled={disabled} onClick={toggle}>

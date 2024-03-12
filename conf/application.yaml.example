@@ -1,0 +1,18 @@
+server:
+  host: "localhost"
+  port: 2525
+
+oauth:
+  client_id: "<your-strava-client-id>"
+  client_secret: "<your-strava-client-secret>"
+  auth_url: "https://www.strava.com/oauth/authorize"
+  token_url: "https://www.strava.com/oauth/token"
+  target_url: "http://localhost:2020" # Redirect to after authentication
+  scopes:
+    - activity:read_all
+
+downloader:
+  period: 10
+
+strava:
+  activities_per_page: 100

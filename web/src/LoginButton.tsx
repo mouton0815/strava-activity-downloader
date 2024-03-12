@@ -1,4 +1,4 @@
-const LOGIN_URL = 'http://localhost:3000/authorize'
+const LOGIN_URL = 'http://localhost:2525/authorize'
 
 type LoginButtonProps = {
     authorized: boolean
