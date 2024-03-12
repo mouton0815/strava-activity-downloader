@@ -26,6 +26,7 @@ mod state;
 mod service;
 
 const CONFIG_YAML : &'static str = "conf/application.yaml";
+const ACTIVITY_DB: &'static str = "activity.db";
 
 /*
 #[tokio::main]
@@ -64,7 +65,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
         config.get_string("oauth.target_url").unwrap_or(STATUS.to_string()),
         scopes)?;
 
-    let service = ActivityService::new("strava.db")?;
+    let service = ActivityService::new(ACTIVITY_DB)?;
 
     // Channel for distributing the termination signal to the treads
     let (tx_term, rx_term1) = broadcast::channel(1);
