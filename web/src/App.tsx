@@ -4,7 +4,10 @@ import {LoginButton} from './LoginButton'
 import {ToggleButton} from './ToggleButton'
 import {StatusTable} from "./StatusTable";
 
-const STATUS_URL = 'http://localhost:2525/status'
+const SERVER_URL = 'http://localhost:2525' // Base URL of the Rust server
+const LOGIN_URL = `${SERVER_URL}/authorize`
+const TOGGLE_URL = `${SERVER_URL}/toggle`
+const STATUS_URL = `${SERVER_URL}/status`
 
 export const App = () => {
     const [status, setStatus] = useState<ServerStatus | null>(null)
@@ -31,8 +34,8 @@ export const App = () => {
     return (
         <div>
             <StatusTable status={status} />
-            <LoginButton authorized={ status.authorized } />
-            <ToggleButton disabled={ !status.authorized } downloadState={ status.download_state } setDownloadState={setDownloadState} />
+            <LoginButton loginUrl={LOGIN_URL} authorized={ status.authorized } />
+            <ToggleButton toggleUrl={TOGGLE_URL} disabled={ !status.authorized } downloadState={ status.download_state } setDownloadState={setDownloadState} />
         </div>
     )
 }

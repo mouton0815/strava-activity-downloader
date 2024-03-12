@@ -1,13 +1,12 @@
-const TOGGLE_URL = 'http://localhost:2525/toggle'
-
 type ToggleButtonProps = {
+    toggleUrl: string
     disabled: boolean,
     downloadState: string,
     setDownloadState (state: string)
 }
 
-export const ToggleButton = ({ disabled, downloadState, setDownloadState }: ToggleButtonProps) => {
-    const toggle = () => fetch(TOGGLE_URL)
+export const ToggleButton = ({ toggleUrl, disabled, downloadState, setDownloadState }: ToggleButtonProps) => {
+    const toggle = () => fetch(toggleUrl)
         .then(res => res.text())
         .then(result => setDownloadState(JSON.parse(result)))
         .catch(error => console.warn(error))

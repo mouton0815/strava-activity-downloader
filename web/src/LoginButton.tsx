@@ -1,11 +1,10 @@
-const LOGIN_URL = 'http://localhost:2525/authorize'
-
 type LoginButtonProps = {
+    loginUrl: string
     authorized: boolean
 }
 
-export const LoginButton = ({ authorized }: LoginButtonProps) => (
-    <button disabled={authorized} onClick={() => { window.location = LOGIN_URL }}>
+export const LoginButton = ({ loginUrl, authorized }: LoginButtonProps) => (
+    <button disabled={authorized} onClick={() => { window.location = loginUrl }}>
         Connect with Strava
     </button>
 )
