@@ -6,7 +6,7 @@ use tokio::join;
 use tokio::sync::broadcast;
 use crate::domain::activity_stream::ActivityStream;
 use crate::domain::server_status::ServerStatus;
-use crate::oauth::client::OAuthClient;
+use crate::oauth::oauth_client::OAuthClient;
 use crate::oauth::token::{Bearer, TokenHolder};
 use crate::rest::rest_paths::{AUTH_CALLBACK, STATUS};
 use crate::rest::http_server::spawn_http_server;

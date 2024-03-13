@@ -1,7 +1,6 @@
 use log::{debug, info, warn};
 use std::time::Duration;
 use axum::BoxError;
-use reqwest::{Error, Response};
 use tokio::sync::broadcast::Receiver;
 use tokio::task::JoinHandle;
 use tokio::time;
@@ -12,8 +11,8 @@ use crate::domain::download_state::DownloadState;
 use crate::state::shared_state::MutexSharedState;
 
 // TODO: Configure URLs from outside?
-// const BASE_URL : &'static str = "https://www.strava.com/api/v3";
-const BASE_URL : &'static str = "http://localhost:5555";
+const BASE_URL : &'static str = "https://www.strava.com/api/v3";
+//const BASE_URL : &'static str = "http://localhost:5555";
 
 async fn get_download_state(state: &MutexSharedState) -> DownloadState {
     let guard = state.lock().await;
@@ -112,7 +111,7 @@ async fn stream_task(state: &MutexSharedState, bearer: String) -> Result<bool, B
         }
         None => {
             info!("No further activities without GPX, stop downloading (can be re-enabled)");
-            set_download_state(state, DownloadState::Inactive).await;
+            set_download_state(state, DownloadState::NoResults).await;
         }
     }
     Ok(false)
@@ -120,19 +119,17 @@ async fn stream_task(state: &MutexSharedState, bearer: String) -> Result<bool, B
 
 async fn try_task(state: &MutexSharedState) -> Result<(), BoxError> {
     let download_state = get_download_state(state).await;
-    if download_state == DownloadState::Inactive {
-        debug!("Download disabled, skip task execution");
-    } else {
+    if download_state.is_active() {
         match get_bearer(&state).await? {
             Some(bearer) => {
                 let limit_reached = match download_state {
                     DownloadState::Activities => activity_task(state, bearer.into()).await?,
                     DownloadState::Tracks => stream_task(state, bearer.into()).await?,
-                    DownloadState::Inactive => false // Match arm cannot be reached
+                    _ => false
                 };
                 if limit_reached {
                     warn!("Strava API limits reached, stop downloading (can be re-enabled)");
-                    set_download_state(state, DownloadState::Inactive).await;
+                    set_download_state(state, DownloadState::LimitReached).await;
                 }
                 // In all cases send a status event to update the frontend
                 send_status_event(state).await?;
@@ -143,6 +140,8 @@ async fn try_task(state: &MutexSharedState) -> Result<(), BoxError> {
                 warn!("Not authorized, skip execution of download task");
             }
         }
+    } else {
+        debug!("Download disabled, skip task execution");
     }
     Ok(())
 }

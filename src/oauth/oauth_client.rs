@@ -106,6 +106,7 @@ impl OAuthClient {
     // TODO: Documentation
     // https://users.rust-lang.org/t/axum-middleware-trait-bound-issue-when-invoking-a-function-returning-boxed-error-result/100052/5
     pub async fn get_bearer(&mut self) -> BearerResult {
+        // Ok(Some("xyz".to_string().into()))
         match self.token.as_ref() {
             Some(token_holder) => {
                 if token::is_expired(token_holder) {
@@ -119,7 +120,8 @@ impl OAuthClient {
                         }
                     }
                 }
-                Ok(Some(self.token.as_ref().expect("Missing token").bearer().clone()))
+                let bearer = self.token.as_ref().expect("Missing token").bearer();
+                Ok(Some(bearer.clone()))
             }
             None => {
                 Ok(None)

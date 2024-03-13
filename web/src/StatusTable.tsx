@@ -1,4 +1,4 @@
-import {ServerStatus} from './ServerStatus'
+import { ServerStatus } from './ServerStatus'
 
 type StatusTableProps = {
     status: ServerStatus
@@ -44,9 +44,11 @@ export const StatusTable = ({ status }: StatusTableProps) => (
 
 function downloaderText(status: string): string {
     switch (status) {
-        case 'Inactive': return 'inactive'
-        case 'Activities': return 'activity download'
-        case 'Tracks': return 'track download'
+        case 'Inactive': return 'Inactive'
+        case 'NoResults': return 'No further activities'
+        case 'LimitReached': return 'API limit reached'
+        case 'Activities': return 'Activity download'
+        case 'Tracks': return 'Track download'
         default: throw new Error('Illegal state')
     }
 }

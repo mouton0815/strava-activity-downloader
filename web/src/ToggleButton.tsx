@@ -13,7 +13,19 @@ export const ToggleButton = ({ toggleUrl, disabled, downloadState, setDownloadSt
 
     return (
         <button disabled={disabled} onClick={toggle}>
-            { downloadState === 'Inactive' ? 'Start downloading' : 'Stop downloading'}
+            { isActive(downloadState) ? 'Stop downloading' : 'Start downloading'}
         </button>
     )
 }
+
+function isActive(status: string): boolean {
+    switch (status) {
+        case 'Inactive': return false
+        case 'NoResults': return false
+        case 'LimitReached': return false
+        case 'Activities': return true
+        case 'Tracks': return true
+        default: throw new Error('Illegal state')
+    }
+}
+

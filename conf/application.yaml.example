@@ -12,7 +12,7 @@ oauth:
     - activity:read_all
 
 downloader:
-  period: 10
+  period: 10 # In seconds, value 10 is suitable for a limit of 100 requests per 15 minutes
 
 strava:
   activities_per_page: 100

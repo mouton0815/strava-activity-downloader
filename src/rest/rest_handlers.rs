@@ -33,11 +33,7 @@ pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Json<Downlo
     let mut guard = state.lock().await;
     match (*guard).oauth.get_bearer().await.map_err(service_error)? {
         Some(_) => {
-            (*guard).download_state = match (*guard).download_state {
-                DownloadState::Inactive => DownloadState::Activities,
-                DownloadState::Activities => DownloadState::Inactive,
-                DownloadState::Tracks => DownloadState::Inactive
-            };
+            (*guard).download_state = (*guard).download_state.toggle();
             Ok(Json((*guard).download_state.clone()))
         },
         None => {
