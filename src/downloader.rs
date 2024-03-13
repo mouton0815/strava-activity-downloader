@@ -1,6 +1,7 @@
 use log::{debug, info, warn};
 use std::time::Duration;
 use axum::BoxError;
+use reqwest::{Error, Response};
 use tokio::sync::broadcast::Receiver;
 use tokio::task::JoinHandle;
 use tokio::time;
@@ -10,7 +11,9 @@ use crate::domain::activity_stats::ActivityStats;
 use crate::domain::download_state::DownloadState;
 use crate::state::shared_state::MutexSharedState;
 
-const BASE_URL : &'static str = "https://www.strava.com/api/v3";
+// TODO: Configure URLs from outside?
+// const BASE_URL : &'static str = "https://www.strava.com/api/v3";
+const BASE_URL : &'static str = "http://localhost:5555";
 
 async fn get_download_state(state: &MutexSharedState) -> DownloadState {
     let guard = state.lock().await;
@@ -63,18 +66,22 @@ async fn store_gpx(state: &MutexSharedState, activity: &Activity, stream: &Activ
 }
 
 /// Downloads activities from Strava and stores them in the database
-async fn activity_task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
+async fn activity_task(state: &MutexSharedState, bearer: String) -> Result<bool, BoxError> {
     let (max_time, per_page) = get_query_params(state).await?;
     let query = vec![("after", max_time),("per_page", per_page)];
 
-    let activities : ActivityVec = reqwest::Client::new()
+    let response = reqwest::Client::new()
         .get(format!("{BASE_URL}/athlete/activities"))
         .header(reqwest::header::AUTHORIZATION, bearer)
         .query(&query)
         .send().await?
-        .error_for_status()?
-        .json::<ActivityVec>().await?;
+        .error_for_status();
 
+    if response.as_ref().is_err_and(|e| e.status() == Some(reqwest::StatusCode::TOO_MANY_REQUESTS)) {
+        return Ok(true)
+    }
+
+    let activities= response?.json::<ActivityVec>().await?;
     if activities.len() == 0 {
         info!("No further activities, start downloading activity streams from oldest to youngest");
         set_download_state(state, DownloadState::Tracks).await;
@@ -82,29 +89,33 @@ async fn activity_task(state: &MutexSharedState, bearer: String) -> Result<(), B
         add_activities(&state, &activities).await?;
     }
 
-    Ok(())
+    Ok(false)
 }
 
 /// Downloads an activity stream from Strava, transforms it to GPX, and stores it as file
-async fn stream_task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
+async fn stream_task(state: &MutexSharedState, bearer: String) -> Result<bool, BoxError> {
     match get_earliest_activity_without_gpx(state).await? {
         Some(activity) => {
             let url = format!("{BASE_URL}/activities/{}/streams?keys=time,latlng,altitude&key_by_type=true", activity.id);
-            let stream : ActivityStream = reqwest::Client::new()
+            let response = reqwest::Client::new()
                 .get(&url)
                 .header(reqwest::header::AUTHORIZATION, bearer)
                 .send().await?
-                .error_for_status()?
-                .json::<ActivityStream>().await?;
+                .error_for_status();
 
+            if response.as_ref().is_err_and(|e| e.status() == Some(reqwest::StatusCode::TOO_MANY_REQUESTS)) {
+                return Ok(true)
+            }
+
+            let stream = response?.json::<ActivityStream>().await?;
             store_gpx(state, &activity, &stream).await?;
         }
         None => {
-            info!("No further activities without GPX, stop executing tasks (can be re-enabled)");
+            info!("No further activities without GPX, stop downloading (can be re-enabled)");
             set_download_state(state, DownloadState::Inactive).await;
         }
     }
-    Ok(())
+    Ok(false)
 }
 
 async fn try_task(state: &MutexSharedState) -> Result<(), BoxError> {
@@ -114,10 +125,14 @@ async fn try_task(state: &MutexSharedState) -> Result<(), BoxError> {
     } else {
         match get_bearer(&state).await? {
             Some(bearer) => {
-                if download_state == DownloadState::Activities {
-                    activity_task(state, bearer.into()).await?;
-                } else {
-                    stream_task(state, bearer.into()).await?;
+                let limit_reached = match download_state {
+                    DownloadState::Activities => activity_task(state, bearer.into()).await?,
+                    DownloadState::Tracks => stream_task(state, bearer.into()).await?,
+                    DownloadState::Inactive => false // Match arm cannot be reached
+                };
+                if limit_reached {
+                    warn!("Strava API limits reached, stop downloading (can be re-enabled)");
+                    set_download_state(state, DownloadState::Inactive).await;
                 }
                 // In all cases send a status event to update the frontend
                 send_status_event(state).await?;
