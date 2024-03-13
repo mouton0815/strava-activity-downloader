@@ -59,6 +59,10 @@ impl ActivityService {
         // Store GPX file ...
         write_gpx(activity, stream)?;
         // ... then mark corresponding database row
+        self.mark_gpx(activity)
+    }
+
+    pub fn mark_gpx(&mut self, activity: &Activity) -> Result<(), BoxError> {
         let tx = self.connection.transaction()?;
         let result = ActivityTable::update_gpx_column(&tx, activity.id.clone())?;
         tx.commit()?;
