@@ -1,14 +1,11 @@
+import { ReactElement } from 'react'
 import { ServerStatus } from './ServerStatus'
 
 type StatusTableProps = {
     status: ServerStatus
 }
 
-const extractDate = (datetime: string | null): string => {
-    return datetime ? datetime.substring(0, 10) : ''
-}
-
-export const StatusTable = ({ status }: StatusTableProps) => (
+export const StatusTable = ({ status }: StatusTableProps): ReactElement => (
     <table>
         <tbody>
         <tr>
@@ -16,11 +13,11 @@ export const StatusTable = ({ status }: StatusTableProps) => (
         </tr>
         <tr>
             <td>Connected with Strava:</td>
-            <td><b>{ Boolean(status.authorized).toString() }</b></td>
+            <td>{ connectionText(status.authorized) }</td>
         </tr>
         <tr>
             <td>Download scheduler status:</td>
-            <td><b>{ downloaderText(status.download_state) }</b></td>
+            <td>{ downloaderText(status.download_state) }</td>
         </tr>
         <tr>
             <td>Number of downloaded activities:</td>
@@ -42,13 +39,25 @@ export const StatusTable = ({ status }: StatusTableProps) => (
     </table>
 )
 
-function downloaderText(status: string): string {
+function connectionText(connected: boolean): ReactElement {
+    return connected ? <b>Connected</b> : <b style={{color: 'darkred'}}>Disconnected</b>
+}
+const extractDate = (datetime: string | null): string => {
+    return datetime ? datetime.substring(0, 10) : ''
+}
+
+function downloaderText(status: string): ReactElement {
     switch (status) {
-        case 'Inactive': return 'Inactive'
-        case 'NoResults': return 'No further activities'
-        case 'LimitReached': return 'API limit reached'
-        case 'Activities': return 'Activity download'
-        case 'Tracks': return 'Track download'
+        case 'Inactive': return <b>Inactive</b>
+        case 'NoResults': return <b>No further activities</b>
+        case 'LimitReached': return (
+            <>
+                <b style={{ color: 'darkred' }}>API limit reached</b>
+                <div>Please restart later</div>
+            </>
+        )
+        case 'Activities': return <b>Activity download</b>
+        case 'Tracks': return <b>Track download</b>
         default: throw new Error('Illegal state')
     }
 }
