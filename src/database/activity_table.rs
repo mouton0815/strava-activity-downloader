@@ -3,7 +3,9 @@ use log::debug;
 use rusqlite::{Connection, OptionalExtension, params, Result, Row, Transaction};
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
+use crate::domain::gpx_store_state::GpxStoreState;
 
+/// See [GpxStoreState] for the meaning of gpx_fetched values
 const CREATE_ACTIVITY_TABLE : &'static str =
     "CREATE TABLE IF NOT EXISTS activity (
         id INTEGER NOT NULL PRIMARY KEY,
@@ -15,7 +17,7 @@ const CREATE_ACTIVITY_TABLE : &'static str =
         total_elevation_gain INTEGER NOT NULL,
         average_speed INTEGER NOT NULL,
         kudos_count INTEGER NOT NULL,
-        gpx_fetched INTEGER DEFAULT 0 NOT NULL CHECK (gpx_fetched IN (0, 1))
+        gpx_fetched INTEGER DEFAULT 0 NOT NULL CHECK (gpx_fetched IN (0, 1, 2))
     )";
 
 const INSERT_ACTIVITY : &'static str =
@@ -39,7 +41,7 @@ const DELETE_ACTIVITY : &'static str =
     "DELETE FROM activity WHERE id = ?";
 
 const UPDATE_GPX_COLUMN : &'static str =
-    "UPDATE activity SET gpx_fetched = 1 WHERE id = ?";
+    "UPDATE activity SET gpx_fetched = ? WHERE id = ?";
 
 const SELECT_ACTIVITIES : &'static str =
     "SELECT id, name, sport_type, start_date, distance, moving_time, total_elevation_gain, average_speed, kudos_count FROM activity";
@@ -50,8 +52,11 @@ const SELECT_ACTIVITY : &'static str =
 const SELECT_EARLIEST_ACTIVITY_WITHOUT_GPX : &'static str =
     concatcp!(SELECT_ACTIVITIES, " WHERE gpx_fetched = 0 and start_date = (SELECT MIN(start_date) from activity WHERE gpx_fetched = 0)");
 
-const SELECT_STATS : &'static str =
-    "SELECT COUNT(id), SUM(gpx_fetched), MIN(start_date), MAX(start_date) FROM activity";
+const SELECT_ACTIVITY_STATS: &'static str =
+    "SELECT COUNT(id), MIN(start_date), MAX(start_date) FROM activity";
+
+const SELECT_TRACK_STATS: &'static str =
+    "SELECT COUNT(id) FROM activity where gpx_fetched = 1";
 
 
 pub struct ActivityTable;
@@ -78,9 +83,10 @@ impl ActivityTable {
         Ok(row_count == 1)
     }
 
-    pub fn update_gpx_column(tx: &Transaction, id: u64) -> Result<bool> {
-        debug!("Execute\n{} with: {}", UPDATE_GPX_COLUMN, id);
-        let row_count = tx.execute(UPDATE_GPX_COLUMN, params![id])?;
+    pub fn update_gpx_column(tx: &Transaction, id: u64, state: GpxStoreState) -> Result<bool> {
+        let value = state as i32;
+        debug!("Execute\n{} with: {} {}", UPDATE_GPX_COLUMN, id, value);
+        let row_count = tx.execute(UPDATE_GPX_COLUMN, params![value, id])?;
         Ok(row_count == 1)
     }
 
@@ -114,12 +120,21 @@ impl ActivityTable {
     }
 
     pub fn select_stats(tx: &Transaction) -> Result<ActivityStats> {
-        debug!("Execute\n{}", SELECT_STATS);
-        let mut stmt = tx.prepare(SELECT_STATS)?;
-        stmt.query_row([], |row | {
-            let trk_count = row.get::<_, Option<u32>>(1)?.unwrap_or(0); // SUM may return NULL
-            Ok(ActivityStats::new(row.get(0)?, trk_count, row.get(2)?, row.get(3)?))
-        })
+        debug!("Execute\n{}", SELECT_ACTIVITY_STATS);
+        let mut stmt = tx.prepare(SELECT_ACTIVITY_STATS)?;
+        let (act_cnt, act_min, act_max) = stmt.query_row([], |row | {
+            let act_cnt : u32 = row.get(0)?;
+            let act_min : Option<String> = row.get(1)?;
+            let act_max : Option<String> = row.get(2)?;
+            Ok((act_cnt, act_min, act_max))
+        })?;
+        debug!("Execute\n{}", SELECT_TRACK_STATS);
+        let mut stmt = tx.prepare(SELECT_TRACK_STATS)?;
+        let trk_cnt = stmt.query_row([], |row | {
+            let trk_cnt : u32 = row.get(0)?;
+            Ok(trk_cnt)
+        })?;
+        Ok(ActivityStats::new(act_cnt, trk_cnt, act_min, act_max))
     }
 
     fn execute_for_activity(tx: &Transaction, query: &str, activity: &Activity) -> Result<()> {
@@ -159,6 +174,7 @@ mod tests {
     use crate::database::activity_table::ActivityTable;
     use crate::domain::activity::Activity;
     use crate::domain::activity_stats::ActivityStats;
+    use crate::domain::gpx_store_state::GpxStoreState;
 
     #[test]
     fn test_insert() {
@@ -228,7 +244,7 @@ mod tests {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
         assert!(ActivityTable::insert(&tx, &Activity::dummy(1, "foo")).is_ok());
-        let result = ActivityTable::update_gpx_column(&tx, 1);
+        let result = ActivityTable::update_gpx_column(&tx, 1, GpxStoreState::Stored);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), true);
         assert!(tx.commit().is_ok());
@@ -238,7 +254,7 @@ mod tests {
     fn test_update_gpx_column_missing() {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
-        let result = ActivityTable::update_gpx_column(&tx, 1);
+        let result = ActivityTable::update_gpx_column(&tx, 1, GpxStoreState::Stored);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false);
         assert!(tx.commit().is_ok());
@@ -255,11 +271,12 @@ mod tests {
         ActivityTable::upsert(&tx, &activity1).unwrap();
         ActivityTable::upsert(&tx, &activity2).unwrap();
         ActivityTable::upsert(&tx, &activity3).unwrap();
-        ActivityTable::update_gpx_column(&tx, 3).unwrap(); // Earliest activity already has a GPX track
+        ActivityTable::update_gpx_column(&tx, 3, GpxStoreState::Stored).unwrap(); // Earliest activity already has a GPX track
+        ActivityTable::update_gpx_column(&tx, 2, GpxStoreState::Missing).unwrap(); // Same for missing track
 
         let result = ActivityTable::select_earliest_without_gpx(&tx);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), Some(activity2));
+        assert_eq!(result.unwrap(), Some(activity1));
         assert!(tx.commit().is_ok());
     }
 
@@ -282,7 +299,7 @@ mod tests {
         ActivityTable::upsert(&tx, &Activity::dummy(3, "2018-02-20T18:02:15Z")).unwrap();
         ActivityTable::upsert(&tx, &Activity::dummy(2, "2018-02-20T18:02:12Z")).unwrap();
         ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:11Z")).unwrap(); // Note: ID overwrite
-        ActivityTable::update_gpx_column(&tx, 1).unwrap();
+        ActivityTable::update_gpx_column(&tx, 1, GpxStoreState::Stored).unwrap();
 
         let result = ActivityTable::select_stats(&tx);
         assert!(result.is_ok());

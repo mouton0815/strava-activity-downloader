@@ -8,6 +8,7 @@ use crate::{ActivityStream, Bearer};
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
 use crate::domain::download_state::DownloadState;
+use crate::domain::gpx_store_state::GpxStoreState;
 use crate::state::shared_state::MutexSharedState;
 
 async fn get_download_state(state: &MutexSharedState) -> DownloadState {
@@ -62,7 +63,7 @@ async fn store_gpx(state: &MutexSharedState, activity: &Activity, stream: &Activ
 
 async fn mark_gpx(state: &MutexSharedState, activity: &Activity) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    (*guard).service.mark_gpx(activity)?;
+    (*guard).service.mark_gpx(activity, GpxStoreState::Missing)?;
     (*guard).merge_activity_stats(&ActivityStats::new(0, 1, None, None));
     Ok(())
 }

@@ -6,6 +6,7 @@ use crate::{ActivityStream, write_gpx};
 use crate::database::activity_table::ActivityTable;
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
+use crate::domain::gpx_store_state::GpxStoreState;
 
 pub struct ActivityService {
     connection: Connection
@@ -59,12 +60,12 @@ impl ActivityService {
         // Store GPX file ...
         write_gpx(activity, stream)?;
         // ... then mark corresponding database row
-        self.mark_gpx(activity)
+        self.mark_gpx(activity, GpxStoreState::Stored)
     }
 
-    pub fn mark_gpx(&mut self, activity: &Activity) -> Result<(), BoxError> {
+    pub fn mark_gpx(&mut self, activity: &Activity, state: GpxStoreState) -> Result<(), BoxError> {
         let tx = self.connection.transaction()?;
-        let result = ActivityTable::update_gpx_column(&tx, activity.id.clone())?;
+        let result = ActivityTable::update_gpx_column(&tx, activity.id.clone(), state)?;
         tx.commit()?;
         debug!("Marked 'GPX fetched' for activity {} with result {result}", activity.id);
         Ok(())
