@@ -19,7 +19,6 @@ and shows the download progress.
 
 ## Preconditions
 #### Required Tools
-You need
 * Rust with `cargo` for the server.
 * [Node.js](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) with `npm` for the UI.
 * Optionally [sqlite3](https://www.sqlite.org) for querying the local DB.

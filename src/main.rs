@@ -50,12 +50,15 @@ async fn main() -> Result<(), Box<dyn Error>>  {
 
     let host = config.get_string("server.host").unwrap_or("localhost".to_string());
     let port = config.get_int("server.port").unwrap_or(3000) as u16;
-    let scopes : Vec<String> = config.get_array("oauth.scopes").unwrap_or(Vec::new())
-        .iter().map(|v| v.clone().into_string().expect(CONFIG_YAML)).collect();
-    let period = config.get_int("downloader.period").unwrap_or(10) as u64;
+
+    let strava_url = config.get_string("strava.api_url").unwrap_or("https://www.strava.com/api/v3".to_string());
+    let request_period = config.get_int("strava.request_period").unwrap_or(10) as u64;
     let activities_per_page = config.get_int("strava.activities_per_page").unwrap_or(30) as u16;
+
     let web_dir = format!("{}/web/dist", std::env::var("CARGO_MANIFEST_DIR").unwrap());
 
+    let scopes : Vec<String> = config.get_array("oauth.scopes").unwrap_or(Vec::new())
+        .iter().map(|v| v.clone().into_string().expect(CONFIG_YAML)).collect();
     let client = OAuthClient::new(
         config.get_string("oauth.client_id").expect(CONFIG_YAML),
         config.get_string("oauth.client_secret").expect(CONFIG_YAML),
@@ -76,8 +79,8 @@ async fn main() -> Result<(), Box<dyn Error>>  {
 
     let state = SharedState::new(client, service, tx_data, activities_per_page);
 
-    let period = Duration::from_secs(period);
-    let downloader = spawn_download_scheduler(state.clone(), rx_term1, period);
+    let request_period = Duration::from_secs(request_period);
+    let downloader = spawn_download_scheduler(state.clone(), rx_term1, strava_url, request_period);
 
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
     let http_server = spawn_http_server(listener, state.clone(), rx_term2, &web_dir);

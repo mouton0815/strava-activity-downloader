@@ -38,7 +38,7 @@ impl SharedState {
     }
 
     /// Merge only if the activity stats are already loaded. There is no need of merging
-    /// otherwise, as the the stats will be loaded later, and will then contain other_stats.
+    /// otherwise, as the stats will be loaded later, and will then contain other_stats.
     pub fn merge_activity_stats(&mut self, other_stats: &ActivityStats) {
         if let Some(stats) = self.activity_stats.as_mut() {
             stats.merge(other_stats);

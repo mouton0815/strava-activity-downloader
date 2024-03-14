@@ -11,8 +11,7 @@ oauth:
   scopes:
     - activity:read_all
 
-downloader:
-  period: 10 # In seconds, value 10 is suitable for a limit of 100 requests per 15 minutes
-
 strava:
-  activities_per_page: 100
+  api_url: "https://www.strava.com/api/v3"
+  request_period: 10 # In seconds, value 10 is suitable for a limit of 100 requests per 15 minutes
+  activities_per_page: 100 # Strava maximum is 200

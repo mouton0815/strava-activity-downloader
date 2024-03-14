@@ -10,10 +10,6 @@ use crate::domain::activity_stats::ActivityStats;
 use crate::domain::download_state::DownloadState;
 use crate::state::shared_state::MutexSharedState;
 
-// TODO: Configure URLs from outside?
-const BASE_URL : &'static str = "https://www.strava.com/api/v3";
-//const BASE_URL : &'static str = "http://localhost:5555";
-
 async fn get_download_state(state: &MutexSharedState) -> DownloadState {
     let guard = state.lock().await;
     (*guard).download_state.clone()
@@ -72,12 +68,12 @@ async fn mark_gpx(state: &MutexSharedState, activity: &Activity) -> Result<(), B
 }
 
 /// Downloads activities from Strava and stores them in the database
-async fn activity_task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
+async fn activity_task(state: &MutexSharedState, strava_url: &str, bearer: String) -> Result<(), BoxError> {
     let (max_time, per_page) = get_query_params(state).await?;
     let query = vec![("after", max_time),("per_page", per_page)];
 
     let response = reqwest::Client::new()
-        .get(format!("{BASE_URL}/athlete/activities"))
+        .get(format!("{strava_url}/athlete/activities"))
         .header(reqwest::header::AUTHORIZATION, bearer)
         .query(&query)
         .send().await?
@@ -101,10 +97,10 @@ async fn activity_task(state: &MutexSharedState, bearer: String) -> Result<(), B
 }
 
 /// Downloads an activity stream from Strava, transforms it to GPX, and stores it as file
-async fn stream_task(state: &MutexSharedState, bearer: String) -> Result<(), BoxError> {
+async fn stream_task(state: &MutexSharedState, strava_url: &str, bearer: String) -> Result<(), BoxError> {
     match get_earliest_activity_without_gpx(state).await? {
         Some(activity) => {
-            let url = format!("{BASE_URL}/activities/{}/streams?keys=time,latlng,altitude&key_by_type=true", activity.id);
+            let url = format!("{strava_url}/activities/{}/streams?keys=time,latlng,altitude&key_by_type=true", activity.id);
             let response = reqwest::Client::new()
                 .get(&url)
                 .header(reqwest::header::AUTHORIZATION, bearer)
@@ -135,15 +131,15 @@ async fn stream_task(state: &MutexSharedState, bearer: String) -> Result<(), Box
     Ok(())
 }
 
-async fn try_task(state: &MutexSharedState) -> Result<(), BoxError> {
+async fn try_task(state: &MutexSharedState, strava_url: &str) -> Result<(), BoxError> {
     let download_state = get_download_state(state).await;
     if download_state.is_active() {
         match get_bearer(&state).await? {
             Some(bearer) => {
                 if download_state == DownloadState::Activities {
-                    activity_task(state, bearer.into()).await?;
+                    activity_task(state, strava_url, bearer.into()).await?;
                 } else if download_state == DownloadState::Tracks {
-                    stream_task(state, bearer.into()).await?;
+                    stream_task(state, strava_url, bearer.into()).await?;
                 }
                 // In all cases send a status event to update the frontend
                 send_status_event(state).await?;
@@ -161,12 +157,12 @@ async fn try_task(state: &MutexSharedState) -> Result<(), BoxError> {
 }
 
 // Must be async as required by tokio::select!
-async fn repeat(state: MutexSharedState, period: Duration, mut rx: Receiver<()>) {
+async fn repeat(state: MutexSharedState, strava_url: &str, period: Duration, mut rx: Receiver<()>) {
     let mut interval = time::interval(period);
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                if let Err(e) = try_task(&state).await {
+                if let Err(e) = try_task(&state, strava_url).await {
                     warn!("Task failed: {:?}, leave downloader", e);
                     break;
                 }
@@ -179,9 +175,9 @@ async fn repeat(state: MutexSharedState, period: Duration, mut rx: Receiver<()>)
     }
 }
 
-pub fn spawn_download_scheduler(state: MutexSharedState, rx: Receiver<()>, period: Duration) -> JoinHandle<()> {
+pub fn spawn_download_scheduler(state: MutexSharedState, rx: Receiver<()>, strava_url: String, period: Duration) -> JoinHandle<()> {
     info!("Spawn download scheduler");
     tokio::spawn(async move {
-        repeat(state, period, rx).await;
+        repeat(state, &strava_url, period, rx).await;
     })
 }
