@@ -5,7 +5,7 @@ use axum::response::Sse;
 use axum::response::sse::Event;
 use axum_macros::debug_handler;
 use futures::Stream;
-use log::{info, warn};
+use log::{debug, info, warn};
 use tokio_stream::wrappers::BroadcastStream;
 use tokio_stream::StreamExt; // Enable Iterator trait for BroadcastStream
 use crate::domain::download_state::DownloadState;
@@ -29,7 +29,7 @@ fn service_error(error: BoxError) -> StatusCode {
 
 #[debug_handler]
 pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Json<DownloadState>, StatusCode> {
-    info!("Enter {}", TOGGLE);
+    debug!("Enter {}", TOGGLE);
     let mut guard = state.lock().await;
     match (*guard).oauth.get_bearer().await.map_err(service_error)? {
         Some(_) => {
@@ -46,7 +46,7 @@ pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Json<Downlo
 #[debug_handler]
 pub async fn status(State(state): State<MutexSharedState>)
     -> Result<Sse<impl Stream<Item = Result<Event, Error>>>, StatusCode> {
-    info!("Enter {}", STATUS);
+    debug!("Enter {}", STATUS);
     let stream = subscribe_and_send_first(&state).await.map_err(service_error)?;
     let stream = stream.map(move |item| {
         Event::default().json_data(item.unwrap())
