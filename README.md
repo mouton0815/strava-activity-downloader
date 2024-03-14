@@ -18,13 +18,13 @@ and shows the download progress.
 <img src="screenshot.png" alt="Screenshot of the web application" style="width:250px;"/>
 
 ## Preconditions
-### Required Tools
+#### Required Tools
 You need
 * Rust with `cargo` for the server.
 * [Node.js](https://docs.npmjs.com/downloading-and-installing-node-js-and-npm) with `npm` for the UI.
 * Optionally [sqlite3](https://www.sqlite.org) for querying the local DB.
 
-### Strava API Client
+#### Strava API Client
 To connect to Strava, you need a Strava API client.
 If you don't have one already, you can register a new API client at https://www.strava.com/settings/api.
 
@@ -34,12 +34,12 @@ You will need values for `Client ID` and `Client Secret` of your API client for 
 
 ## Setup
 
-### Build the Server
+#### Build the Server
 ```shell
 cargo build
 ```
 
-### Configure the Server
+#### Configure the Server
 Create a server configuration from the template:
 ```shell
 cp conf/application.yaml.example conf/application.yaml
@@ -51,7 +51,7 @@ oauth:
   client_secret: "<your-strava-client-secret>"
 ```
 
-### Build the Web UI
+#### Build the Web UI
 ```shell
 cd web
 npm install
@@ -67,6 +67,8 @@ RUST_LOG=info cargo run
 ```
 Then point your browser to http://localhost:2525 and start downloading your activities!
 
+#### Dev Mode
+
 It is also possible to run the web UI in vite's [preview mode](https://vitejs.dev/guide/cli#vite-preview).
 The preview server runs at port `2020`. To ensure that the Rust server redirects to the vite preview server
 after authenticating with Strava, the `target_url` configured in `conf/application.yaml` should be
@@ -74,3 +76,9 @@ after authenticating with Strava, the `target_url` configured in `conf/applicati
 oauth:
   target_url: "http://localhost:2020" # Redirect to after authentication
 ```
+Then start the dev server in another shell (tab):
+```shell
+cd web
+npm run dev
+```
+Point your browser to http://localhost:2020.
