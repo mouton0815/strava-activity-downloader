@@ -81,3 +81,45 @@ cd web
 npm run dev
 ```
 Point your browser to http://localhost:2020.
+
+## Server API
+Instead of using the web UI, the server can be controlled via REST API.
+For usability, all endpoints use `GET`.
+A browser is only needed for the authorization,
+where Strava redirects to its login and authorization pages.
+
+#### Authorize
+```
+GET /authorize
+```
+starts the authorization with Strava.
+Under the hood, the server performs an [OAuth 2.0 Authorization Code Grant](https://oauth.net/2/grant-types/authorization-code/) flow
+to obtain a Strava token. At the end of the process, the server redirects to
+the URL configured at `oauth.target_url` in `conf/application.yaml`.
+By default, this is the web UI exposed at the root path of the server.
+
+#### Status
+```
+GET /status
+```
+opens an [SSE](https://en.wikipedia.org/wiki/Server-sent_events) channel that receives
+server-status updates as JSON objects in the SSE `data` field. An example object is
+```json
+{
+  "authorized": true,
+  "download_state": "Inactive",
+  "activity_stats": {
+    "act_count": 1191,
+    "trk_count": 380,
+    "min_time": "2010-04-01T15:13:08Z",
+    "max_time": "2024-03-10T10:16:17Z"
+  }
+}
+
+```
+#### Toggle
+```
+GET /toggle
+```
+starts the download process or stops it, depending on the previous state.
+The request returns the name of the new state (e.g. `"Inactive"`).
