@@ -20,10 +20,7 @@ export const App = () => {
         const es = new EventSource(STATUS_URL)
         es.onopen = () => console.log('SSE connection opened')
         es.onerror = (e) => console.warn('SSE error:', e)
-        es.onmessage = (e) => {
-            console.log('SSE:', e.data)
-            setStatus(JSON.parse(e.data))
-        }
+        es.onmessage = (e) => setStatus(JSON.parse(e.data))
         return () => es.close();
     }, [])
 

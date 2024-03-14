@@ -52,8 +52,14 @@ function downloaderText(status: string): ReactElement {
         case 'NoResults': return <b>No further activities</b>
         case 'LimitReached': return (
             <>
-                <b style={{ color: 'darkred' }}>API limit reached</b>
-                <div>Please restart later</div>
+                <b style={{ color: 'darkred' }}>Strava API limit reached</b>
+                <div>Please retry later</div>
+            </>
+        )
+        case 'RequestError': return (
+            <>
+                <b style={{ color: 'darkred' }}>Strava API returned error</b>
+                <div>Please inspect the server log</div>
             </>
         )
         case 'Activities': return <b>Activity download</b>

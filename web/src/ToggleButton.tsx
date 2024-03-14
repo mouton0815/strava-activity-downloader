@@ -23,6 +23,7 @@ function isActive(status: string): boolean {
         case 'Inactive': return false
         case 'NoResults': return false
         case 'LimitReached': return false
+        case 'RequestError': return false
         case 'Activities': return true
         case 'Tracks': return true
         default: throw new Error('Illegal state')
