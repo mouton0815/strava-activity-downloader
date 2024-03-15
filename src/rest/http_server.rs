@@ -13,7 +13,7 @@ use crate::rest::oauth_handlers::{authorize, callback};
 use crate::rest::rest_paths::{AUTH_CALLBACK, AUTHORIZE, STATUS, TOGGLE};
 use crate::state::shared_state::MutexSharedState;
 
-pub fn spawn_http_server(listener: TcpListener, state: MutexSharedState, mut rx: Receiver<()>, web_dir: &str) -> JoinHandle<()> {
+pub fn spawn_http_server(listener: TcpListener, state: MutexSharedState, mut rx_term: Receiver<()>, web_dir: &str) -> JoinHandle<()> {
     info!("Spawn HTTP server");
 
     let cors = CorsLayer::new()
@@ -32,7 +32,7 @@ pub fn spawn_http_server(listener: TcpListener, state: MutexSharedState, mut rx:
     tokio::spawn(async move {
         axum::serve(listener, router)
             .with_graceful_shutdown(async move {
-                rx.recv().await.unwrap();
+                rx_term.recv().await.unwrap();
                 debug!("Termination signal received, leave HTTP server");
             })
             .await

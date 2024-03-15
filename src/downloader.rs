@@ -42,9 +42,9 @@ async fn add_activities(state: &MutexSharedState, activities: &ActivityVec) -> R
 
 async fn send_status_event(state: &MutexSharedState) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    if (*guard).sender.receiver_count() > 0 {
+    if (*guard).tx_data.receiver_count() > 0 {
         let status = (*guard).get_server_status().await?;
-        (*guard).sender.send(status)?;
+        (*guard).tx_data.send(status)?;
     }
     Ok(())
 }
@@ -163,7 +163,7 @@ async fn try_task(state: &MutexSharedState, strava_url: &str) -> Result<(), BoxE
 }
 
 // Must be async as required by tokio::select!
-async fn repeat(state: MutexSharedState, strava_url: &str, period: Duration, mut rx: Receiver<()>) {
+async fn repeat(state: MutexSharedState, strava_url: &str, period: Duration, mut rx_term: Receiver<()>) {
     let mut interval = time::interval(period);
     loop {
         tokio::select! {
@@ -173,7 +173,7 @@ async fn repeat(state: MutexSharedState, strava_url: &str, period: Duration, mut
                     break;
                 }
             },
-            _ = rx.recv() => {
+            _ = rx_term.recv() => {
                 debug!("Termination signal received, leave downloader");
                 break;
             }
@@ -181,9 +181,9 @@ async fn repeat(state: MutexSharedState, strava_url: &str, period: Duration, mut
     }
 }
 
-pub fn spawn_download_scheduler(state: MutexSharedState, rx: Receiver<()>, strava_url: String, period: Duration) -> JoinHandle<()> {
+pub fn spawn_download_scheduler(state: MutexSharedState, rx_term: Receiver<()>, strava_url: String, period: Duration) -> JoinHandle<()> {
     info!("Spawn download scheduler");
     tokio::spawn(async move {
-        repeat(state, &strava_url, period, rx).await;
+        repeat(state, &strava_url, period, rx_term).await;
     })
 }

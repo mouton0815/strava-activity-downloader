@@ -6,8 +6,7 @@ use axum::response::sse::Event;
 use axum_macros::debug_handler;
 use futures::Stream;
 use log::{debug, info, warn};
-use tokio_stream::wrappers::BroadcastStream;
-use tokio_stream::StreamExt; // Enable Iterator trait for BroadcastStream
+use tokio::sync::broadcast::Receiver;
 use crate::domain::download_state::DownloadState;
 use crate::domain::server_status::ServerStatus;
 use crate::rest::rest_paths::{STATUS, TOGGLE};
@@ -22,7 +21,7 @@ fn reqwest_error(error: reqwest::Error) -> StatusCode {
     StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-fn service_error(error: BoxError) -> StatusCode {
+fn map_box_error(error: BoxError) -> StatusCode {
     warn!("{}", error);
     StatusCode::INTERNAL_SERVER_ERROR
 }
@@ -31,7 +30,7 @@ fn service_error(error: BoxError) -> StatusCode {
 pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Json<DownloadState>, StatusCode> {
     debug!("Enter {}", TOGGLE);
     let mut guard = state.lock().await;
-    match (*guard).oauth.get_bearer().await.map_err(service_error)? {
+    match (*guard).oauth.get_bearer().await.map_err(map_box_error)? {
         Some(_) => {
             (*guard).download_state = (*guard).download_state.toggle();
             Ok(Json((*guard).download_state.clone()))
@@ -43,21 +42,47 @@ pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Json<Downlo
     }
 }
 
+/*
+#[debug_handler]
+pub async fn status(State(state): State<MutexSharedState>) -> Result<Json<ServerStatus>, StatusCode> {
+    debug!("Enter {}", STATUS);
+    let mut guard = state.lock().await;
+    let status = (*guard).get_server_status().await.map_err(service_error)?;
+    Ok(Json(status))
+}
+*/
+
 #[debug_handler]
 pub async fn status(State(state): State<MutexSharedState>)
     -> Result<Sse<impl Stream<Item = Result<Event, Error>>>, StatusCode> {
     debug!("Enter {}", STATUS);
-    let stream = subscribe_and_send_first(&state).await.map_err(service_error)?;
-    let stream = stream.map(move |item| {
-        Event::default().json_data(item.unwrap())
-    });
+    let mut receiver = subscribe_and_send_first(&state).await.map_err(map_box_error)?;
+    let mut rx_term = subscribe_term(&state).await;
+    let stream = async_stream::stream! {
+        loop {
+            tokio::select! {
+                item = receiver.recv() => {
+                    yield Event::default().json_data(item.unwrap());
+                }
+                _ = rx_term.recv() => {
+                    debug!("Termination signal received, leave SSE handler");
+                    return;
+                }
+            }
+        }
+    };
     Ok(Sse::new(stream))
 }
 
-async fn subscribe_and_send_first(state: &MutexSharedState) -> Result<BroadcastStream<ServerStatus>, BoxError> {
+async fn subscribe_and_send_first(state: &MutexSharedState) -> Result<Receiver<ServerStatus>, BoxError> {
     let mut guard = state.lock().await;
-    let receiver = (*guard).sender.subscribe();
+    let receiver = (*guard).tx_data.subscribe();
     let status = (*guard).get_server_status().await?;
-    (*guard).sender.send(status)?;
-    Ok(BroadcastStream::new(receiver))
+    (*guard).tx_data.send(status)?;
+    Ok(receiver)
+}
+
+async fn subscribe_term(state: &MutexSharedState) -> Receiver<()> {
+    let guard = state.lock().await;
+    (*guard).tx_term.subscribe()
 }

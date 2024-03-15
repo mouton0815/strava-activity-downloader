@@ -17,6 +17,12 @@ export const App = () => {
     }
 
     useEffect(() => {
+        /*
+        fetch(STATUS_URL)
+            .then(response => response.json())
+            .then(data => setStatus(data))
+            .catch(error => console.log(error))
+       */
         const es = new EventSource(STATUS_URL)
         es.onopen = () => console.log('SSE connection opened')
         es.onerror = (e) => console.warn('SSE error:', e)

@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn Error>>  {
     // Channel for sending data from the producer to the SSE handler
     let (tx_data, _rx_data) = broadcast::channel::<ServerStatus>(3);
 
-    let state = SharedState::new(client, service, tx_data, activities_per_page);
+    let state = SharedState::new(client, service, tx_data, tx_term.clone(), activities_per_page);
 
     let request_period = Duration::from_secs(request_period);
     let downloader = spawn_download_scheduler(state.clone(), rx_term1, strava_url, request_period);
