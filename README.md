@@ -110,9 +110,10 @@ server-status updates as JSON objects in the SSE `data` field. An example object
   "download_state": "Inactive",
   "activity_stats": {
     "act_count": 1191,
+    "act_min_time": "2010-04-01T15:13:08Z",
+    "act_max_time": "2024-03-10T10:16:17Z",
     "trk_count": 380,
-    "min_time": "2010-04-01T15:13:08Z",
-    "max_time": "2024-03-10T10:16:17Z"
+    "trk_max_time": "2016-10-03T14:00:56Z"
   }
 }
 
