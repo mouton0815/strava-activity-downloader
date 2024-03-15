@@ -48,9 +48,9 @@ impl SharedState {
     /// Try to take the time from the state object.
     /// If it is not part of the state (on server startup), then get it from database.
     /// If no activity records exist in the database, then return 0.
-    pub async fn get_max_time(&mut self) -> Result<i64, BoxError> {
+    pub async fn get_activity_max_time(&mut self) -> Result<i64, BoxError> {
         let activity_stats = self.get_activity_stats().await?;
-        match activity_stats.max_time_as_secs() {
+        match activity_stats.act_max_time_as_secs() {
             Some(secs) => Ok(secs),
             None => Ok(0)
         }

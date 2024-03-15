@@ -56,7 +56,7 @@ const SELECT_ACTIVITY_STATS: &'static str =
     "SELECT COUNT(id), MIN(start_date), MAX(start_date) FROM activity";
 
 const SELECT_TRACK_STATS: &'static str =
-    "SELECT COUNT(id) FROM activity where gpx_fetched = 1";
+    "SELECT COUNT(id), MAX(start_date) FROM activity where gpx_fetched = 1";
 
 
 pub struct ActivityTable;
@@ -130,11 +130,12 @@ impl ActivityTable {
         })?;
         debug!("Execute\n{}", SELECT_TRACK_STATS);
         let mut stmt = tx.prepare(SELECT_TRACK_STATS)?;
-        let trk_cnt = stmt.query_row([], |row | {
+        let (trk_cnt, trk_max) = stmt.query_row([], |row | {
             let trk_cnt : u32 = row.get(0)?;
-            Ok(trk_cnt)
+            let trk_max : Option<String> = row.get(1)?;
+            Ok((trk_cnt, trk_max))
         })?;
-        Ok(ActivityStats::new(act_cnt, trk_cnt, act_min, act_max))
+        Ok(ActivityStats::new(act_cnt, act_min, act_max, trk_cnt, trk_max))
     }
 
     fn execute_for_activity(tx: &Transaction, query: &str, activity: &Activity) -> Result<()> {
@@ -303,7 +304,7 @@ mod tests {
 
         let result = ActivityTable::select_stats(&tx);
         assert!(result.is_ok());
-        let reference = ActivityStats::new(3, 1, Some("2018-02-20T18:02:11Z".to_string()), Some("2018-02-20T18:02:15Z".to_string()));
+        let reference = ActivityStats::new(3, Some("2018-02-20T18:02:11Z".to_string()), Some("2018-02-20T18:02:15Z".to_string()), 1, Some("2018-02-20T18:02:11Z".to_string()));
         assert_eq!(result.unwrap(), reference);
     }
 

@@ -1,8 +1,9 @@
 type ActivityStats = {
     act_count: number,
+    act_min_time: string | null,
+    act_max_time: string | null,
     trk_count: number,
-    min_time: string | null,
-    max_time: string | null
+    trk_max_time: string | null
 }
 
 export type ServerStatus = {

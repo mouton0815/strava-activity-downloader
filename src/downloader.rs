@@ -28,7 +28,7 @@ async fn get_bearer(state: &MutexSharedState) -> Result<Option<Bearer>, BoxError
 
 async fn get_query_params(state: &MutexSharedState) -> Result<(i64, i64), BoxError> {
     let mut guard = state.lock().await;
-    let max_time = (*guard).get_max_time().await?;
+    let max_time = (*guard).get_activity_max_time().await?;
     let per_page = (*guard).activities_per_page.clone() as i64;
     Ok((max_time, per_page))
 }
@@ -57,14 +57,14 @@ async fn get_earliest_activity_without_gpx(state: &MutexSharedState) -> Result<O
 async fn store_gpx(state: &MutexSharedState, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
     (*guard).service.store_gpx(activity, stream)?;
-    (*guard).merge_activity_stats(&ActivityStats::new(0, 1, None, None));
+    (*guard).merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
     Ok(())
 }
 
 async fn mark_gpx(state: &MutexSharedState, activity: &Activity) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
     (*guard).service.mark_gpx(activity, GpxStoreState::Missing)?;
-    (*guard).merge_activity_stats(&ActivityStats::new(0, 1, None, None));
+    (*guard).merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
     Ok(())
 }
 

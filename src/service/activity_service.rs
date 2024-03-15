@@ -37,7 +37,7 @@ impl ActivityService {
             max_time = std::cmp::max(Some(activity.start_date.clone()), max_time);
         }
         tx.commit()?;
-        Ok(ActivityStats::new(act_count, 0, min_time, max_time))
+        Ok(ActivityStats::new(act_count, min_time, max_time, 0, None))
     }
 
     pub fn get_stats(&mut self) -> Result<ActivityStats, BoxError> {
@@ -84,7 +84,7 @@ mod tests {
         let mut service = create_service();
         let stats = service.add(&vec);
         assert!(stats.is_ok());
-        assert_eq!(stats.unwrap(), ActivityStats::new(0, 0, None, None));
+        assert_eq!(stats.unwrap(), ActivityStats::new(0, None, None, 0, None));
     }
 
     #[test]
@@ -98,7 +98,7 @@ mod tests {
         let stats = service.add(&vec);
         assert!(stats.is_ok());
         assert_eq!(stats.unwrap(), ActivityStats::new(
-            3, 0, Some("2018-02-20T18:02:12Z".to_string()), Some("2018-02-20T18:02:15Z".to_string())));
+            3, Some("2018-02-20T18:02:12Z".to_string()), Some("2018-02-20T18:02:15Z".to_string()), 0, None));
         //assert_eq!(stats.unwrap(), Some(1519149735)); // 2018-02-20T18:02:12Z
     }
 

@@ -4,25 +4,27 @@ use crate::util::iso8601;
 #[derive(Clone, Serialize, Debug, PartialEq)]
 pub struct ActivityStats {
     act_count: u32,
+    act_min_time: Option<String>,
+    act_max_time: Option<String>,
     trk_count: u32,
-    min_time: Option<String>,
-    max_time: Option<String>
+    trk_max_time: Option<String>
 }
 
 impl ActivityStats {
-    pub fn new(act_count: u32, trk_count: u32, min_time: Option<String>, max_time: Option<String>) -> Self {
-        Self { act_count, trk_count, min_time, max_time }
+    pub fn new(act_count: u32, act_min_time: Option<String>, act_max_time: Option<String>, trk_count: u32, trk_max_time: Option<String>) -> Self {
+        Self { act_count, act_min_time, act_max_time, trk_count, trk_max_time }
     }
 
-    pub fn max_time_as_secs(&self) -> Option<i64> {
-        self.max_time.as_ref().map(|s| iso8601::string_to_secs(s))
+    pub fn act_max_time_as_secs(&self) -> Option<i64> {
+        self.act_max_time.as_ref().map(|s| iso8601::string_to_secs(s))
     }
 
     pub fn merge(&mut self, stats: &ActivityStats) {
         self.act_count += stats.act_count.clone();
+        self.act_min_time = ActivityStats::min(&self.act_min_time, &stats.act_min_time);
+        self.act_max_time = ActivityStats::max(&self.act_max_time, &stats.act_max_time);
         self.trk_count += stats.trk_count.clone();
-        self.min_time = ActivityStats::min(&self.min_time, &stats.min_time);
-        self.max_time = ActivityStats::max(&self.max_time, &stats.max_time);
+        self.trk_max_time = ActivityStats::max(&self.trk_max_time, &stats.trk_max_time);
     }
 
     fn min(a: &Option<String>, b: &Option<String>) -> Option<String> {
@@ -41,33 +43,41 @@ mod tests {
 
     #[test]
     fn test_merge_none_none() {
-        let mut this = ActivityStats::new(0, 0, None, None);
-        let other = ActivityStats::new(0, 0, None, None);
+        let mut this = ActivityStats::new(0, None, None, 0, None);
+        let other = ActivityStats::new(0, None, None, 0, None);
         this.merge(&other);
         assert_eq!(this, other);
     }
 
     #[test]
     fn test_merge_none_some() {
-        let mut this = ActivityStats::new(0, 0, None, None);
-        let other = ActivityStats::new(5, 3, Some("2018-02-20T18:02:12Z".to_string()), Some("2018-02-20T18:02:15Z".to_string()));
+        let mut this = ActivityStats::new(0, None, None, 0, None);
+        let other = ActivityStats::new(5, Some("a".to_string()), Some("b".to_string()), 3,  Some("c".to_string()));
         this.merge(&other);
         assert_eq!(this, other);
     }
 
     #[test]
     fn test_merge_some_some() {
-        let mut this = ActivityStats::new(3, 2, Some("2018-02-20T18:02:12Z".to_string()), Some("2018-02-20T18:02:15Z".to_string()));
-        let other = ActivityStats::new(5, 4, Some("2018-02-20T18:02:10Z".to_string()), Some("2018-02-20T18:02:17Z".to_string()));
+        let mut this = ActivityStats::new(3, Some("b".to_string()), Some("a".to_string()), 2, Some("b".to_string()));
+        let other = ActivityStats::new(5, Some("a".to_string()), Some("b".to_string()), 4, Some("c".to_string()));
         this.merge(&other);
-        assert_eq!(this, ActivityStats::new(8, 6, other.min_time, other.max_time));
+        assert_eq!(this, ActivityStats::new(8, other.act_min_time, other.act_max_time, 6, other.trk_max_time));
     }
 
     #[test]
     fn test_merge_some_keep() {
-        let mut this = ActivityStats::new(5, 4, Some("2018-02-20T18:02:10Z".to_string()), Some("2018-02-20T18:02:17Z".to_string()));
-        let other = ActivityStats::new(3, 2, Some("2018-02-20T18:02:12Z".to_string()), Some("2018-02-20T18:02:15Z".to_string()));
+        let mut this = ActivityStats::new(5, Some("a".to_string()), Some("b".to_string()), 4, Some("c".to_string()));
+        let other = ActivityStats::new(3, Some("b".to_string()), Some("a".to_string()), 2, Some("b".to_string()));
         this.merge(&other);
-        assert_eq!(this, ActivityStats::new(8, 6, this.min_time.clone(), this.max_time.clone()));
+        assert_eq!(this, ActivityStats::new(8, this.act_min_time.clone(), this.act_max_time.clone(), 6, this.trk_max_time.clone()));
+    }
+
+    #[test]
+    fn test_merge_some_none() {
+        let mut this = ActivityStats::new(5, Some("a".to_string()), Some("b".to_string()), 4, Some("c".to_string()));
+        let other = ActivityStats::new(3, None, None, 2, None);
+        this.merge(&other);
+        assert_eq!(this, ActivityStats::new(8, this.act_min_time.clone(), this.act_max_time.clone(), 6, this.trk_max_time.clone()));
     }
 }
