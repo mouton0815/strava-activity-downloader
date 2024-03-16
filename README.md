@@ -124,3 +124,29 @@ GET /toggle
 ```
 starts the download process or stops it, depending on the previous state.
 The request returns the name of the new state (e.g. `"Inactive"`).
+
+## Using the Data
+The server stores the GPX files in the `data` folder, grouped by year and month.
+The file names refer to the activity ids provided by Strava. An example path is
+```
+./data/2024/03/7654321123.gpx
+```
+To read the GPX files from oldes to newest, you can either sort the files by name
+(as Strava uses increasing activity ids), or by file data (because the server downloads the
+files in chronological order).
+
+If you have `sqlite3` installed, you can also query the activity database (`activity.db`).
+This example query selects all activities of 2024:
+```
+sqlite3 activity.db "select * from activity where substr(start_date, 1, 4) = '2024'"
+```
+The `id` column is the primary key and holds the activity id.
+Column `gpx_fetched` shows the GPX download status:
+0 means: "not yet downloaded",
+1 means "GPX downloaded" (there is a corresponding file in folder `data`), and
+2 means "the activity does not have a track".
+
+Note that you can reveal the column names and format the results like so:
+```
+sqlite3 activity.db -header -column "select * from activity"
+```
