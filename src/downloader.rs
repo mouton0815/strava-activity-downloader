@@ -126,9 +126,18 @@ async fn stream_task(state: &MutexSharedState, strava_url: &str, bearer: String)
                 return Ok(DownloadState::RequestError)
             }
 
-            let stream = response?.json::<ActivityStream>().await?;
-            store_gpx(state, &activity, &stream).await?;
-            Ok(DownloadState::Tracks)
+            match response?.json::<ActivityStream>().await {
+                Ok(stream) => {
+                    store_gpx(state, &activity, &stream).await?;
+                    Ok(DownloadState::Tracks)
+                }
+                Err(error) => {
+                    // A known case is that the activity stream does not contain a "latlon" array
+                    warn!("Failed to parse the track of activity {}: {}", activity.id, error);
+                    mark_gpx(state, &activity).await?;
+                    Ok(DownloadState::Tracks) // Downloading continues
+                }
+            }
         }
         None => {
             info!("No further activities without GPX, stop downloading (can be re-enabled)");
