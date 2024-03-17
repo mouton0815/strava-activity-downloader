@@ -46,17 +46,19 @@ impl ActivityStream {
     }
 
     fn to_gpx_internal(&self, activity_id: u64, activity_name: &str, start_time: i64) -> Result<String, fmt::Error> {
+        // Escape name according to https://stackoverflow.com/questions/21758345/what-are-the-official-xml-reserved-characters
+        let name = activity_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
         let mut s = String::new();
         writeln!(&mut s, "<?xml version='1.0' encoding='UTF-8'?>")?;
         writeln!(&mut s, "<gpx xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xmlns='http://www.topografix.com/GPX/1/1' xsi:schemaLocation='http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd' version='1.1' creator='http://strava.com/'>")?;
         writeln!(&mut s, "  <metadata>")?;
-        writeln!(&mut s, "    <name>{}</name>", activity_name)?;
+        writeln!(&mut s, "    <name>{}</name>", name)?;
         writeln!(&mut s, "    <link href='https://www.strava.com/api/v3/activities/{}'>", activity_id)?;
-        writeln!(&mut s, "      <text>{}</text>", activity_name)?;
+        writeln!(&mut s, "      <text>{}</text>", name)?;
         writeln!(&mut s, "    </link>")?;
         writeln!(&mut s, "  </metadata>")?;
         writeln!(&mut s, "  <trk>")?;
-        writeln!(&mut s, "    <name>{}</name>", activity_name)?;
+        writeln!(&mut s, "    <name>{}</name>", name)?;
         writeln!(&mut s, "    <trkseg>")?;
         for i in 0..self.latlng.data.len() {
             let (lat, lon) = &self.latlng.data[i.clone()];
