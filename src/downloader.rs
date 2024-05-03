@@ -1,4 +1,4 @@
-use log::{debug, info, warn};
+use log::{debug, info, trace, warn};
 use std::time::Duration;
 use axum::BoxError;
 use tokio::sync::broadcast::Receiver;
@@ -166,7 +166,7 @@ async fn try_task(state: &MutexSharedState, strava_url: &str) -> Result<(), BoxE
             }
         }
     } else {
-        debug!("Download disabled, skip task execution");
+        trace!("Download disabled, skip task execution");
     }
     Ok(())
 }
