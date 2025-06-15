@@ -7,6 +7,7 @@ use tokio::time;
 use crate::{ActivityStream, Bearer};
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
+use crate::domain::download_delay::DownloadDelay;
 use crate::domain::download_state::DownloadState;
 use crate::domain::gpx_store_state::GpxStoreState;
 use crate::state::shared_state::MutexSharedState;
@@ -146,7 +147,8 @@ async fn stream_task(state: &MutexSharedState, strava_url: &str, bearer: String)
     }
 }
 
-async fn try_task(state: &MutexSharedState, strava_url: &str) -> Result<(), BoxError> {
+async fn try_task(state: &MutexSharedState, strava_url: &str) -> Result<DownloadDelay, BoxError> {
+    let mut new_delay = DownloadDelay::Short;
     let download_state = get_download_state(state).await;
     if download_state.is_active() {
         match get_bearer(&state).await? {
@@ -156,6 +158,7 @@ async fn try_task(state: &MutexSharedState, strava_url: &str) -> Result<(), BoxE
                     DownloadState::Tracks => stream_task(state, strava_url, bearer.into()).await?,
                     _ => download_state.clone()
                 };
+                new_delay = download_state.new_delay(&new_state);
                 set_download_state(state, new_state).await;
                 send_status_event(state).await?; // Send status event to update the frontend
             }
@@ -168,18 +171,35 @@ async fn try_task(state: &MutexSharedState, strava_url: &str) -> Result<(), BoxE
     } else {
         trace!("Download disabled, skip task execution");
     }
-    Ok(())
+    Ok(new_delay)
 }
 
 // Must be async as required by tokio::select!
-async fn repeat(state: MutexSharedState, strava_url: &str, period: Duration, mut rx_term: Receiver<()>) {
-    let mut interval = time::interval(period);
+async fn repeat(state: MutexSharedState, strava_url: &str, long_period: Duration, short_period: Duration, mut rx_term: Receiver<()>) {
+    let mut curr_delay = DownloadDelay::Short;
+    let mut interval = time::interval(Duration::from_secs(1));
     loop {
         tokio::select! {
             _ = interval.tick() => {
-                if let Err(e) = try_task(&state, strava_url).await {
-                    warn!("Task failed: {:?}, leave downloader", e);
-                    break;
+                match try_task(&state, strava_url).await {
+                    Ok(new_delay) => if new_delay != curr_delay {
+                        match new_delay {
+                            DownloadDelay::Long => {
+                                debug!("Switch to LONG download delay");
+                                interval = time::interval(long_period)
+                            },
+                            DownloadDelay::Short => {
+                                debug!("Switch to SHORT download delay");
+                                interval = time::interval(short_period)
+                            }
+                        }
+                        interval.tick().await;
+                        curr_delay = new_delay;
+                    }
+                    Err(e) => {
+                        warn!("Task failed: {:?}, leave downloader", e);
+                        break;
+                    }
                 }
             },
             _ = rx_term.recv() => {
@@ -193,6 +213,6 @@ async fn repeat(state: MutexSharedState, strava_url: &str, period: Duration, mut
 pub fn spawn_download_scheduler(state: MutexSharedState, rx_term: Receiver<()>, strava_url: String, period: Duration) -> JoinHandle<()> {
     info!("Spawn download scheduler");
     tokio::spawn(async move {
-        repeat(state, &strava_url, period, rx_term).await;
+        repeat(state, &strava_url, period, Duration::from_millis(500), rx_term).await;
     })
 }
