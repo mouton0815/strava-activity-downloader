@@ -5,3 +5,4 @@ pub mod activity_stream;
 pub mod download_state;
 pub mod download_delay;
 pub mod gpx_store_state;
+pub mod tile;

@@ -1,10 +1,5 @@
 use std::f64::consts::PI;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct Tile {
-    x: u64,
-    y: u64
-}
+use crate::domain::tile::Tile;
 
 /// Calculates the x,y part of a tile name (see https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames)
 /// from a latitude-longitude pair plus zoom level, and creates a [Tile] object.
