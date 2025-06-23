@@ -40,7 +40,7 @@ impl TileTable {
     }
 
     pub fn upsert(tx: &Transaction, tile: &Tile, activity_id: i64) -> Result<()> {
-        let values = params![tile.x, tile.y, activity_id];
+        let values = params![tile.get_x(), tile.get_y(), activity_id];
         tx.execute(UPSERT_TILE, values).map(|_| ()) // Ignore returned row count
     }
 
@@ -60,10 +60,7 @@ impl TileTable {
     fn row_to_tile_row(row: &Row) -> Result<TileRow> {
         // Reverse the conversion of floats to integers done in function upsert:
         Ok(TileRow {
-            tile: Tile {
-                x: row.get(0)?,
-                y: row.get(1)?
-            },
+            tile: Tile::new(row.get(0)?, row.get(1)?),
             activity_id: row.get(2)?,
             activity_count: row.get(3)?
         })
@@ -80,9 +77,9 @@ mod tests {
 
     #[test]
     fn test_upsert() {
-        let tile1 = Tile{ x: 1, y: 1 };
-        let tile2 = Tile{ x: 2, y: 2 };
-        let tile3 = Tile{ x: 1, y: 1 }; // Identical to tile1
+        let tile1 = Tile::new(1, 1);
+        let tile2 = Tile::new(2, 2);
+        let tile3 = Tile::new(1, 1); // Identical to tile1
 
         let mut conn = create_connection();
         assert!(ActivityTable::create_table(&conn).is_ok());
