@@ -1,23 +1,25 @@
+use std::collections::HashSet;
 use std::fmt;
 use std::fmt::Write;
 use axum::BoxError;
 use serde::Deserialize;
+use crate::domain::map_tile::MapTile;
 use crate::util::iso8601::{secs_to_string, string_to_secs};
 
 #[derive(Deserialize)]
 struct LatitudeLongitude {
-    data: Vec<(f32,f32)>
+    data: Vec<(f64,f64)>
 }
 
 #[derive(Deserialize)]
 struct Altitude {
-    data: Vec<f32>
+    data: Vec<f64>
 }
 
 // Distances are always included in the activity stream
 #[derive(Deserialize)]
 struct Distance {
-    data: Vec<f32>
+    data: Vec<f64>
 }
 
 #[derive(Deserialize)]
@@ -74,6 +76,19 @@ impl ActivityStream {
         writeln!(&mut s, "</gpx>")?;
         Ok(s)
     }
+
+    /// Returns the list of unique [MapTile]s touched by this activity stream.
+    /// The returned list is not sorted and does not contain duplicate tiles.
+    pub fn to_tiles(&self, zoom: u16) -> Result<Vec<MapTile>, BoxError> {
+        let coords: &Vec<(f64, f64)> = self.latlng.data.as_ref();
+        let tiles = coords
+            .into_iter()
+            .map(|(lat, lon)| MapTile::from_coords(*lat, *lon, zoom))
+            .collect::<HashSet<_>>()// Collect into set to remove duplicates
+            .into_iter()
+            .collect();
+        Ok(tiles)
+    }
 }
 
 impl fmt::Display for ActivityStream {
@@ -85,16 +100,17 @@ impl fmt::Display for ActivityStream {
 #[cfg(test)]
 mod tests {
     use crate::ActivityStream;
+    use crate::domain::map_tile::MapTile;
 
     // Activity streams from java have additional fields like "series_type". They are ignored here.
     static INPUT: &str = r#"{
-  "latlng":{"data":[[51.318165,12.375655],[51.318213,12.375588]],"series_type":"foo","original_size":1,"resolution":"bar"},
-  "altitude":{"data":[123.456,100.0],"series_type":"foo","original_size":1,"resolution":"bar"},
-  "distance":{"data":[0,3.7],"series_type":"foo","original_size":1,"resolution":"bar"},
-  "time":{"data":[1,3],"series_type":"foo","original_size":1,"resolution":"bar"}
+  "latlng":{"data":[[51.318165,12.375655],[51.318213,12.395588],[51.318213,12.375588]],"series_type":"foo","original_size":1,"resolution":"bar"},
+  "altitude":{"data":[123.456, 120.0,100.0],"series_type":"foo","original_size":1,"resolution":"bar"},
+  "distance":{"data":[0,1.3,3.7],"series_type":"foo","original_size":1,"resolution":"bar"},
+  "time":{"data":[1,3,5],"series_type":"foo","original_size":1,"resolution":"bar"}
 }"#;
 
-    static REFERENCE: &str = r#"<?xml version='1.0' encoding='UTF-8'?>
+    static GPX_REF: &str = r#"<?xml version='1.0' encoding='UTF-8'?>
 <gpx xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xmlns='http://www.topografix.com/GPX/1/1' xsi:schemaLocation='http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd' version='1.1' creator='http://strava.com/'>
   <metadata>
     <name>Foo Bar</name>
@@ -109,9 +125,13 @@ mod tests {
         <ele>123.456</ele>
         <time>2024-01-01T00:00:01Z</time>
       </trkpt>
-      <trkpt lat='51.318214' lon='12.375588'>
-        <ele>100.0</ele>
+      <trkpt lat='51.318213' lon='12.395588'>
+        <ele>120.0</ele>
         <time>2024-01-01T00:00:03Z</time>
+      </trkpt>
+      <trkpt lat='51.318213' lon='12.375588'>
+        <ele>100.0</ele>
+        <time>2024-01-01T00:00:05Z</time>
       </trkpt>
     </trkseg>
   </trk>
@@ -124,6 +144,16 @@ mod tests {
         assert!(stream.is_ok());
         let result = stream.unwrap().to_gpx(12345, "Foo Bar", "2024-01-01T00:00:00Z");
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), REFERENCE);
+        assert_eq!(result.unwrap(), GPX_REF);
+    }
+
+    #[test]
+    fn test_to_tiles() {
+        let stream : serde_json::Result<ActivityStream> = serde_json::from_str(INPUT);
+        assert!(stream.is_ok());
+        let result = stream.unwrap().to_tiles(14);
+        assert!(result.is_ok());
+        let reference = vec!(MapTile::new(8755, 5461), MapTile::new(8756, 5461));
+        assert_eq!(result.unwrap(), reference);
     }
 }
