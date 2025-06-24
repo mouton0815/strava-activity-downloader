@@ -1,9 +1,9 @@
 use log::debug;
 use rusqlite::{Connection, params, Result, Row, Transaction};
-use crate::domain::tile::Tile;
+use crate::domain::map_tile::MapTile;
 
 const CREATE_TILE_TABLE : &'static str =
-    "CREATE TABLE IF NOT EXISTS tile (
+    "CREATE TABLE IF NOT EXISTS maptile (
         x INTEGER NOT NULL,
         y INTEGER NOT NULL,
         activity_id INTEGER NOT NULL,
@@ -13,7 +13,7 @@ const CREATE_TILE_TABLE : &'static str =
     )";
 
 const UPSERT_TILE: &'static str =
-    "INSERT INTO tile (x, y, activity_id, activity_count) \
+    "INSERT INTO maptile (x, y, activity_id, activity_count) \
      VALUES (?, ?, ?, 1) \
      ON CONFLICT(x, y) DO \
      UPDATE SET activity_count = excluded.activity_count + 1";
@@ -21,46 +21,47 @@ const UPSERT_TILE: &'static str =
 // TODO: Deletion ... support it?
 
 const SELECT_TILES : &'static str =
-    "SELECT x, y, activity_id, activity_count FROM tile";
+    "SELECT x, y, activity_id, activity_count FROM maptile";
 
 #[derive(Debug, PartialEq)]
-pub struct TileRow { // TODO: Better name
-    tile: Tile,
+pub struct MapTileRow { // TODO: Better name
+    tile: MapTile,
     activity_id: i64,
     activity_count: u32
 }
 
-pub struct TileTable;
+pub struct MapTileTable;
 
-impl TileTable {
+impl MapTileTable {
     pub fn create_table(conn: &Connection) -> Result<()> {
+        // let sql = CREATE_TILE_TABLE.replace("maptile", "maptile14");
         debug!("Execute\n{}", CREATE_TILE_TABLE);
         conn.execute(CREATE_TILE_TABLE, [])?;
         Ok(())
     }
 
-    pub fn upsert(tx: &Transaction, tile: &Tile, activity_id: i64) -> Result<()> {
+    pub fn upsert(tx: &Transaction, tile: &MapTile, activity_id: i64) -> Result<()> {
         let values = params![tile.get_x(), tile.get_y(), activity_id];
         tx.execute(UPSERT_TILE, values).map(|_| ()) // Ignore returned row count
     }
 
-    pub fn select_all(tx: &Transaction) -> Result<Vec<TileRow>> {
+    pub fn select_all(tx: &Transaction) -> Result<Vec<MapTileRow>> {
         debug!("Execute\n{}", SELECT_TILES);
         let mut stmt = tx.prepare(SELECT_TILES)?;
         let tile_iter = stmt.query_map([], |row| {
             Self::row_to_tile_row(row)
         })?;
-        let mut tile_vec: Vec<TileRow> = Vec::new();
+        let mut tile_vec: Vec<MapTileRow> = Vec::new();
         for tile in tile_iter {
             tile_vec.push(tile?)
         }
         Ok(tile_vec)
     }
 
-    fn row_to_tile_row(row: &Row) -> Result<TileRow> {
+    fn row_to_tile_row(row: &Row) -> Result<MapTileRow> {
         // Reverse the conversion of floats to integers done in function upsert:
-        Ok(TileRow {
-            tile: Tile::new(row.get(0)?, row.get(1)?),
+        Ok(MapTileRow {
+            tile: MapTile::new(row.get(0)?, row.get(1)?),
             activity_id: row.get(2)?,
             activity_count: row.get(3)?
         })
@@ -71,32 +72,32 @@ impl TileTable {
 mod tests {
     use rusqlite::Connection;
     use crate::database::activity_table::ActivityTable;
-    use crate::database::tile_table::{TileRow, TileTable};
+    use crate::database::maptile_table::{MapTileRow, MapTileTable};
     use crate::domain::activity::Activity;
-    use crate::domain::tile::Tile;
+    use crate::domain::map_tile::MapTile;
 
     #[test]
     fn test_upsert() {
-        let tile1 = Tile::new(1, 1);
-        let tile2 = Tile::new(2, 2);
-        let tile3 = Tile::new(1, 1); // Identical to tile1
+        let tile1 = MapTile::new(1, 1);
+        let tile2 = MapTile::new(2, 2);
+        let tile3 = MapTile::new(1, 1); // Identical to tile1
 
         let mut conn = create_connection();
         assert!(ActivityTable::create_table(&conn).is_ok());
-        assert!(TileTable::create_table(&conn).is_ok());
+        assert!(MapTileTable::create_table(&conn).is_ok());
 
         let tx = conn.transaction().unwrap();
         assert!(ActivityTable::insert(&tx, &Activity::dummy(1, "foo")).is_ok());
         assert!(ActivityTable::insert(&tx, &Activity::dummy(2, "bar")).is_ok());
 
-        assert!(TileTable::upsert(&tx, &tile1, 1).is_ok());
-        assert!(TileTable::upsert(&tx, &tile2, 2).is_ok());
-        assert!(TileTable::upsert(&tx, &tile3, 1).is_ok()); // tile3 overwrites tile1
+        assert!(MapTileTable::upsert(&tx, &tile1, 1).is_ok());
+        assert!(MapTileTable::upsert(&tx, &tile2, 2).is_ok());
+        assert!(MapTileTable::upsert(&tx, &tile3, 1).is_ok()); // tile3 overwrites tile1
         assert!(tx.commit().is_ok());
 
         let ref_tile_rows = [
-            &TileRow{ tile: tile1, activity_id: 1, activity_count: 2 },
-            &TileRow{ tile: tile2, activity_id: 2, activity_count: 1 }
+            &MapTileRow { tile: tile1, activity_id: 1, activity_count: 2 },
+            &MapTileRow { tile: tile2, activity_id: 2, activity_count: 1 }
         ];
         check_results(&mut conn, &ref_tile_rows);
     }
@@ -107,10 +108,10 @@ mod tests {
         conn.unwrap()
     }
 
-    fn check_results(conn: &mut Connection, ref_tile_rows: &[&TileRow]) {
+    fn check_results(conn: &mut Connection, ref_tile_rows: &[&MapTileRow]) {
         let tx = conn.transaction().unwrap();
 
-        let tile_rows = TileTable::select_all(&tx);
+        let tile_rows = MapTileTable::select_all(&tx);
         assert!(tile_rows.is_ok());
         assert!(tx.commit().is_ok());
 

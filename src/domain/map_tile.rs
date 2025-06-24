@@ -1,19 +1,19 @@
 use std::f64::consts::PI;
 
 /// Represents a slippy map tile (see https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames)
-#[derive(Clone, Debug, PartialEq)]
-pub struct Tile {
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct MapTile {
     x: u64,
     y: u64
 }
 
-impl Tile {
+impl MapTile {
     pub fn new(x: u64, y: u64) -> Self {
         Self { x, y }
     }
 
     /// Calculates the x,y part of a tile name from a latitude-longitude pair plus zoom level,
-    /// and creates a [Tile] object.
+    /// and creates a [MapTile] object.
     /// @param lat - a latitude
     /// @param lon - a longitude
     /// @param zoom - a map zoom level
@@ -37,7 +37,7 @@ impl Tile {
 
 #[cfg(test)]
 mod tests {
-    use crate::domain::tile::Tile;
+    use crate::domain::map_tile::MapTile;
 
     const ZOOM: u16 = 14;
 
@@ -56,64 +56,73 @@ mod tests {
 
     #[test]
     fn test_jena_c_inner() {
-        let tile = Tile::from_coords((JENA_LAT_N + JENA_LAT_S) / 2.0, (JENA_LON_W + JENA_LON_E) / 2.0, ZOOM);
-        assert_eq!(tile, Tile::new(JENA_X, JENA_Y));
+        let tile = MapTile::from_coords((JENA_LAT_N + JENA_LAT_S) / 2.0, (JENA_LON_W + JENA_LON_E) / 2.0, ZOOM);
+        assert_eq!(tile, MapTile::new(JENA_X, JENA_Y));
     }
 
 
     #[test]
     fn test_jena_c_nw() {
-        let tile = Tile::from_coords(JENA_LAT_N, JENA_LON_W, ZOOM);
-        assert_eq!(tile, Tile::new(JENA_X, JENA_Y));
+        let tile = MapTile::from_coords(JENA_LAT_N, JENA_LON_W, ZOOM);
+        assert_eq!(tile, MapTile::new(JENA_X, JENA_Y));
     }
 
     #[test]
     fn test_jena_c_ne() {
-        let tile = Tile::from_coords(JENA_LAT_N, JENA_LON_E, ZOOM);
-        assert_eq!(tile, Tile::new(JENA_X, JENA_Y));
+        let tile = MapTile::from_coords(JENA_LAT_N, JENA_LON_E, ZOOM);
+        assert_eq!(tile, MapTile::new(JENA_X, JENA_Y));
     }
 
     #[test]
     fn test_jena_c_sw() {
-        let tile = Tile::from_coords(JENA_LAT_S, JENA_LON_W, ZOOM);
-        assert_eq!(tile, Tile::new(JENA_X, JENA_Y));
+        let tile = MapTile::from_coords(JENA_LAT_S, JENA_LON_W, ZOOM);
+        assert_eq!(tile, MapTile::new(JENA_X, JENA_Y));
     }
 
     #[test]
     fn test_jena_c_se() {
-        let tile = Tile::from_coords(JENA_LAT_S, JENA_LON_E, ZOOM);
-        assert_eq!(tile, Tile::new(JENA_X, JENA_Y));
+        let tile = MapTile::from_coords(JENA_LAT_S, JENA_LON_E, ZOOM);
+        assert_eq!(tile, MapTile::new(JENA_X, JENA_Y));
     }
 
     // Jena tiles around center tile
     #[test]
     fn test_jena_n_sw() {
-        let tile = Tile::from_coords(JENA_LAT_N + DELTA, JENA_LON_W, ZOOM);
-        assert_eq!(tile, Tile::new(JENA_X, JENA_Y - 1));
+        let tile = MapTile::from_coords(JENA_LAT_N + DELTA, JENA_LON_W, ZOOM);
+        assert_eq!(tile, MapTile::new(JENA_X, JENA_Y - 1));
     }
 
     #[test]
     fn test_jena_w_ne() {
-        let tile = Tile::from_coords(JENA_LAT_N, JENA_LON_W - DELTA, ZOOM);
-        assert_eq!(tile, Tile::new(JENA_X - 1, JENA_Y));
+        let tile = MapTile::from_coords(JENA_LAT_N, JENA_LON_W - DELTA, ZOOM);
+        assert_eq!(tile, MapTile::new(JENA_X - 1, JENA_Y));
     }
 
     #[test]
     fn test_jena_s_nw() {
-        let tile = Tile::from_coords(JENA_LAT_S - DELTA, JENA_LON_W, ZOOM);
-        assert_eq!(tile, Tile::new(JENA_X, JENA_Y + 1));
+        let tile = MapTile::from_coords(JENA_LAT_S - DELTA, JENA_LON_W, ZOOM);
+        assert_eq!(tile, MapTile::new(JENA_X, JENA_Y + 1));
     }
 
     #[test]
     fn test_jena_e_nw() {
-        let tile = Tile::from_coords(JENA_LAT_N, JENA_LON_E + DELTA, ZOOM);
-        assert_eq!(tile, Tile::new(JENA_X + 1, JENA_Y));
+        let tile = MapTile::from_coords(JENA_LAT_N, JENA_LON_E + DELTA, ZOOM);
+        assert_eq!(tile, MapTile::new(JENA_X + 1, JENA_Y));
     }
 
     // Zero coordinate
     #[test]
     fn test_zero() {
-        let tile = Tile::from_coords(0.0, 0.0, ZOOM);
-        assert_eq!(tile, Tile::new(ZERO_X, ZERO_Y));
+        let tile = MapTile::from_coords(0.0, 0.0, ZOOM);
+        assert_eq!(tile, MapTile::new(ZERO_X, ZERO_Y));
+    }
+
+    #[test]
+    fn test_temp() {
+        let tile = MapTile::from_coords(51.318165, 12.375655, ZOOM); // 8755, 5461)
+        let tile = MapTile::from_coords(51.318213,12.395588, ZOOM); // (8756, 5461)
+        let tile = MapTile::from_coords(51.318213,12.375588, ZOOM); // (8755, 5461)
+
+        assert_eq!(tile, MapTile::new(8755, 5461));
     }
 }
