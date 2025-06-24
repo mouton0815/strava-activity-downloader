@@ -1,7 +1,7 @@
 use std::f64::consts::PI;
 
 /// Represents a slippy map tile (see https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames)
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct MapTile {
     x: u64,
     y: u64

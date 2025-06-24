@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Write;
 use axum::BoxError;
@@ -78,13 +78,13 @@ impl ActivityStream {
     }
 
     /// Returns the list of unique [MapTile]s touched by this activity stream.
-    /// The returned list is not sorted and does not contain duplicate tiles.
+    /// The returned list is sorted and does not contain duplicate tiles.
     pub fn to_tiles(&self, zoom: u16) -> Result<Vec<MapTile>, BoxError> {
         let coords: &Vec<(f64, f64)> = self.latlng.data.as_ref();
         let tiles = coords
             .into_iter()
             .map(|(lat, lon)| MapTile::from_coords(*lat, *lon, zoom))
-            .collect::<HashSet<_>>()// Collect into set to remove duplicates
+            .collect::<BTreeSet<_>>()// Collect into set to remove duplicates
             .into_iter()
             .collect();
         Ok(tiles)
