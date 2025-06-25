@@ -6,36 +6,48 @@ use serde::Deserialize;
 use crate::domain::map_tile::MapTile;
 use crate::util::iso8601::{secs_to_string, string_to_secs};
 
+type LatLon = (f64, f64);
+
 #[derive(Deserialize)]
-struct LatitudeLongitude {
-    data: Vec<(f64,f64)>
+struct LatLonVec {
+    data: Vec<LatLon>
 }
 
 #[derive(Deserialize)]
-struct Altitude {
+struct AltitudeVec {
     data: Vec<f64>
 }
 
 // Distances are always included in the activity stream
 #[derive(Deserialize)]
-struct Distance {
+struct DistanceVec {
     data: Vec<f64>
 }
 
 #[derive(Deserialize)]
-struct Time {
+struct TimeVec {
     data: Vec<u32>
 }
 
 #[derive(Deserialize)]
 pub struct ActivityStream {
-    latlng: LatitudeLongitude,
-    altitude: Altitude,
-    distance: Distance,
-    time: Time
+    latlng: LatLonVec,
+    altitude: AltitudeVec,
+    distance: DistanceVec,
+    time: TimeVec
 }
 
 impl ActivityStream {
+    /// Creates an activity stream from coordinates and leaves all other arrays empty (for testing).
+    pub fn from_coords(coords: Vec<LatLon>) -> Self {
+        ActivityStream {
+            latlng: LatLonVec{ data: coords },
+            altitude: AltitudeVec { data: vec![] },
+            distance: DistanceVec { data: vec![] },
+            time: TimeVec { data: vec![] }
+        }
+    }
+
     pub fn to_gpx(&self, activity_id: u64, activity_name: &str, start_time: &str) -> Result<String, BoxError> {
         if self.latlng.data.len() != self.time.data.len() ||
             self.time.data.len() != self.distance.data.len() ||

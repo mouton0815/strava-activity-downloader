@@ -135,18 +135,14 @@ mod tests {
         ];
 
         // Contains a duplicate tile, which is filtered out by ActivityStream::to_tiles():
-        const INPUT1: &str = r#"{"latlng":{"data":[[1.0,1.0],[3.0,3.0],[1.0,1.0]]},"altitude":{"data":[]},"distance":{"data":[]},"time":{"data":[]}}"#;
-        let stream1: serde_json::Result<ActivityStream> = serde_json::from_str(INPUT1);
-        assert!(stream1.is_ok());
-        // Contains a tile that is also part of INPUT1. It will be deduplicated by database upsert:
-        const INPUT2: &str = r#"{"latlng":{"data":[[1.0,1.0],[2.0,2.0]]},"altitude":{"data":[]},"distance":{"data":[]},"time":{"data":[]}}"#;
-        let stream2: serde_json::Result<ActivityStream> = serde_json::from_str(INPUT2);
-        assert!(stream2.is_ok());
+        let stream1 = ActivityStream::from_coords(vec![(1.0, 1.0),(3.0, 3.0),(1.0, 1.0)]);
+        // Contains a tile that is also part of stream1. It will be deduplicated by database upsert:
+        let stream2 = ActivityStream::from_coords(vec![(2.0, 2.0),(1.0, 1.0)]);
 
         let mut service = create_service();
         assert!(service.add(&activities).is_ok());
-        assert!(service.save_tiles(5, &stream1.unwrap()).is_ok());
-        assert!(service.save_tiles(7, &stream2.unwrap()).is_ok());
+        assert!(service.save_tiles(5, &stream1).is_ok());
+        assert!(service.save_tiles(7, &stream2).is_ok());
 
         let results = service.get_tiles();
         assert!(results.is_ok());
