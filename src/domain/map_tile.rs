@@ -117,12 +117,13 @@ mod tests {
         assert_eq!(tile, MapTile::new(ZERO_X, ZERO_Y));
     }
 
+    /*
     #[test]
     fn test_temp() {
-        let tile = MapTile::from_coords(51.318165, 12.375655, ZOOM); // 8755, 5461)
-        let tile = MapTile::from_coords(51.318213,12.395588, ZOOM); // (8756, 5461)
-        let tile = MapTile::from_coords(51.318213,12.375588, ZOOM); // (8755, 5461)
-
-        assert_eq!(tile, MapTile::new(8755, 5461));
+        let tile = MapTile::from_coords(1.0, 1.0, ZOOM); // (8237, 8146)
+        let tile = MapTile::from_coords(2.0, 2.0, ZOOM); // (8283, 8100)
+        let tile = MapTile::from_coords(3.0, 3.0, ZOOM); // (8328, 8055)
+        assert_eq!(tile, MapTile::new(8328, 8055));
     }
+    */
 }

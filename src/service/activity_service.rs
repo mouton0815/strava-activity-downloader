@@ -4,6 +4,7 @@ use log::{debug, info};
 use rusqlite::Connection;
 use crate::{ActivityStream, write_gpx};
 use crate::database::activity_table::ActivityTable;
+use crate::database::maptile_table::{MapTileRow, MapTileTable};
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
 use crate::domain::gpx_store_state::GpxStoreState;
@@ -16,6 +17,7 @@ impl ActivityService {
     pub fn new(db_path: &str) -> Result<Self, Box<dyn Error>> {
         let connection = Connection::open(db_path)?;
         ActivityTable::create_table(&connection)?;
+        MapTileTable::create_table(&connection)?;
         Ok(Self{ connection })
     }
 
@@ -59,24 +61,47 @@ impl ActivityService {
     pub fn store_gpx(&mut self, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
         // Store GPX file ...
         write_gpx(activity, stream)?;
-        // ... then mark corresponding database row
-        self.mark_gpx(activity, GpxStoreState::Stored)
+        // ... then mark the corresponding activity
+        self.mark_gpx(activity, GpxStoreState::Stored)?;
+        // ... finally compute the tiles and store them
+        self.save_tiles(activity.id, stream)?;
+        Ok(())
     }
 
     pub fn mark_gpx(&mut self, activity: &Activity, state: GpxStoreState) -> Result<(), BoxError> {
         let tx = self.connection.transaction()?;
-        let result = ActivityTable::update_gpx_column(&tx, activity.id.clone(), state)?;
-        tx.commit()?;
+        let result = ActivityTable::update_gpx_column(&tx, activity.id, state)?;
         debug!("Marked 'GPX fetched' for activity {} with result {result}", activity.id);
+        tx.commit()?;
         Ok(())
+    }
+
+    fn save_tiles(&mut self, activity_id: u64, stream: &ActivityStream) -> Result<(), BoxError> {
+        let tx = self.connection.transaction()?;
+        let tiles = stream.to_tiles(14)?; // TODO: zoom
+        for tile in tiles {
+            MapTileTable::upsert(&tx, &tile, activity_id)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn get_tiles(&mut self) -> Result<Vec<MapTileRow>, BoxError> {
+        let tx = self.connection.transaction()?;
+        let results = MapTileTable::select_all(&tx)?;
+        tx.commit()?;
+        Ok(results)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::ActivityService;
+    use crate::database::maptile_table::MapTileRow;
     use crate::domain::activity::{Activity, ActivityVec};
     use crate::domain::activity_stats::ActivityStats;
+    use crate::domain::activity_stream::ActivityStream;
+    use crate::domain::map_tile::MapTile;
 
     #[test]
     fn test_add_none() {
@@ -89,17 +114,47 @@ mod tests {
 
     #[test]
     fn test_add_some() {
-        let vec = vec![
+        let activities = vec![
             Activity::dummy(2, "2018-02-20T18:02:13Z"),
             Activity::dummy(1, "2018-02-20T18:02:15Z"),
             Activity::dummy(3, "2018-02-20T18:02:12Z"),
         ];
         let mut service = create_service();
-        let stats = service.add(&vec);
+        let stats = service.add(&activities);
         assert!(stats.is_ok());
         assert_eq!(stats.unwrap(), ActivityStats::new(
             3, Some("2018-02-20T18:02:12Z".to_string()), Some("2018-02-20T18:02:15Z".to_string()), 0, None));
         //assert_eq!(stats.unwrap(), Some(1519149735)); // 2018-02-20T18:02:12Z
+    }
+
+    #[test]
+    fn test_store_tiles() {
+        let activities = vec![
+            Activity::dummy(5, "2018-02-20T18:02:13Z"),
+            Activity::dummy(7, "2018-02-20T18:02:15Z")
+        ];
+
+        // Contains a duplicate tile, which is filtered out by ActivityStream::to_tiles():
+        const INPUT1: &str = r#"{"latlng":{"data":[[1.0,1.0],[3.0,3.0],[1.0,1.0]]},"altitude":{"data":[]},"distance":{"data":[]},"time":{"data":[]}}"#;
+        let stream1: serde_json::Result<ActivityStream> = serde_json::from_str(INPUT1);
+        assert!(stream1.is_ok());
+        // Contains a tile that is also part of INPUT1. It will be deduplicated by database upsert:
+        const INPUT2: &str = r#"{"latlng":{"data":[[1.0,1.0],[2.0,2.0]]},"altitude":{"data":[]},"distance":{"data":[]},"time":{"data":[]}}"#;
+        let stream2: serde_json::Result<ActivityStream> = serde_json::from_str(INPUT2);
+        assert!(stream2.is_ok());
+
+        let mut service = create_service();
+        assert!(service.add(&activities).is_ok());
+        assert!(service.save_tiles(5, &stream1.unwrap()).is_ok());
+        assert!(service.save_tiles(7, &stream2.unwrap()).is_ok());
+
+        let results = service.get_tiles();
+        assert!(results.is_ok());
+        assert_eq!(results.unwrap(), vec![
+            MapTileRow::new(MapTile::new(8237, 8146), 5, 2), // [1.0, 1.0]
+            MapTileRow::new(MapTile::new(8283, 8100), 7, 1), // [2.0, 2.0]
+            MapTileRow::new(MapTile::new(8328, 8055), 5, 1)  // [3.0, 3.0]
+        ]);
     }
 
     fn create_service() -> ActivityService {

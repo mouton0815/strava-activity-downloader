@@ -1,5 +1,5 @@
 use log::debug;
-use rusqlite::{Connection, params, Result, Row, Transaction};
+use rusqlite::{Connection, params, Result, Transaction};
 use crate::domain::map_tile::MapTile;
 
 const CREATE_TILE_TABLE : &'static str =
@@ -21,13 +21,19 @@ const UPSERT_TILE: &'static str =
 // TODO: Deletion ... support it?
 
 const SELECT_TILES : &'static str =
-    "SELECT x, y, activity_id, activity_count FROM maptile";
+    "SELECT x, y, activity_id, activity_count FROM maptile ORDER BY x, y";
 
 #[derive(Debug, PartialEq)]
 pub struct MapTileRow { // TODO: Better name
     tile: MapTile,
     activity_id: i64,
     activity_count: u32
+}
+
+impl MapTileRow {
+    pub fn new(tile: MapTile, activity_id: i64, activity_count: u32) -> Self {
+        Self { tile, activity_id, activity_count }
+    }
 }
 
 pub struct MapTileTable;
@@ -40,7 +46,7 @@ impl MapTileTable {
         Ok(())
     }
 
-    pub fn upsert(tx: &Transaction, tile: &MapTile, activity_id: i64) -> Result<()> {
+    pub fn upsert(tx: &Transaction, tile: &MapTile, activity_id: u64) -> Result<()> {
         let values = params![tile.get_x(), tile.get_y(), activity_id];
         tx.execute(UPSERT_TILE, values).map(|_| ()) // Ignore returned row count
     }
@@ -49,22 +55,17 @@ impl MapTileTable {
         debug!("Execute\n{}", SELECT_TILES);
         let mut stmt = tx.prepare(SELECT_TILES)?;
         let tile_iter = stmt.query_map([], |row| {
-            Self::row_to_tile_row(row)
+            Ok(MapTileRow::new(
+                MapTile::new(row.get(0)?, row.get(1)?),
+                row.get(2)?,
+                row.get(3)?
+            ))
         })?;
         let mut tile_vec: Vec<MapTileRow> = Vec::new();
         for tile in tile_iter {
             tile_vec.push(tile?)
         }
         Ok(tile_vec)
-    }
-
-    fn row_to_tile_row(row: &Row) -> Result<MapTileRow> {
-        // Reverse the conversion of floats to integers done in function upsert:
-        Ok(MapTileRow {
-            tile: MapTile::new(row.get(0)?, row.get(1)?),
-            activity_id: row.get(2)?,
-            activity_count: row.get(3)?
-        })
     }
 }
 

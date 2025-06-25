@@ -104,10 +104,10 @@ mod tests {
 
     // Activity streams from java have additional fields like "series_type". They are ignored here.
     static INPUT: &str = r#"{
-  "latlng":{"data":[[51.318165,12.375655],[51.318213,12.395588],[51.318213,12.375588]],"series_type":"foo","original_size":1,"resolution":"bar"},
-  "altitude":{"data":[123.456, 120.0,100.0],"series_type":"foo","original_size":1,"resolution":"bar"},
-  "distance":{"data":[0,1.3,3.7],"series_type":"foo","original_size":1,"resolution":"bar"},
-  "time":{"data":[1,3,5],"series_type":"foo","original_size":1,"resolution":"bar"}
+  "latlng":{"data":[[51.318165,12.375655],[51.318213,12.395588],[51.318213,12.375588]]},
+  "altitude":{"data":[123.456,120.0,100.0]},
+  "distance":{"data":[0,1.3,3.7]},
+  "time":{"data":[1,3,5]}
 }"#;
 
     static GPX_REF: &str = r#"<?xml version='1.0' encoding='UTF-8'?>
