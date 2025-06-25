@@ -1,6 +1,6 @@
 use std::error::Error;
 use axum::BoxError;
-use log::{debug, info};
+use log::{debug, info, warn};
 use rusqlite::Connection;
 use crate::{ActivityStream, write_gpx};
 use crate::database::activity_table::ActivityTable;
@@ -10,15 +10,18 @@ use crate::domain::activity_stats::ActivityStats;
 use crate::domain::gpx_store_state::GpxStoreState;
 
 pub struct ActivityService {
-    connection: Connection
+    connection: Connection,
+    store_tiles: bool
 }
 
 impl ActivityService {
-    pub fn new(db_path: &str) -> Result<Self, Box<dyn Error>> {
+    pub fn new(db_path: &str, store_tiles: bool) -> Result<Self, Box<dyn Error>> {
         let connection = Connection::open(db_path)?;
         ActivityTable::create_table(&connection)?;
-        MapTileTable::create_table(&connection)?;
-        Ok(Self{ connection })
+        if store_tiles {
+            MapTileTable::create_table(&connection)?;
+        }
+        Ok(Self{ connection, store_tiles })
     }
 
     /// Adds all activities to the database and returns the computed [ActivityStats]
@@ -77,20 +80,27 @@ impl ActivityService {
     }
 
     fn save_tiles(&mut self, activity_id: u64, stream: &ActivityStream) -> Result<(), BoxError> {
-        let tx = self.connection.transaction()?;
-        let tiles = stream.to_tiles(14)?; // TODO: zoom
-        for tile in tiles {
-            MapTileTable::upsert(&tx, &tile, activity_id)?;
+        if self.store_tiles {
+            let tx = self.connection.transaction()?;
+            let tiles = stream.to_tiles(14)?; // TODO: zoom
+            for tile in tiles {
+                MapTileTable::upsert(&tx, &tile, activity_id)?;
+            }
+            tx.commit()?;
         }
-        tx.commit()?;
         Ok(())
     }
 
     pub fn get_tiles(&mut self) -> Result<Vec<MapTileRow>, BoxError> {
-        let tx = self.connection.transaction()?;
-        let results = MapTileTable::select_all(&tx)?;
-        tx.commit()?;
-        Ok(results)
+        if self.store_tiles {
+            let tx = self.connection.transaction()?;
+            let results = MapTileTable::select_all(&tx)?;
+            tx.commit()?;
+            Ok(results)
+        } else {
+            warn!("Tile storage disabled");
+            Ok(vec![])
+        }
     }
 }
 
@@ -154,7 +164,7 @@ mod tests {
     }
 
     fn create_service() -> ActivityService {
-        let service = ActivityService::new(":memory:");
+        let service = ActivityService::new(":memory:", true);
         assert!(service.is_ok());
         service.unwrap()
     }

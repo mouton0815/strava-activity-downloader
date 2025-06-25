@@ -68,7 +68,8 @@ async fn main() -> Result<(), Box<dyn Error>>  {
         config.get_string("oauth.target_url").unwrap_or(STATUS.to_string()),
         scopes)?;
 
-    let service = ActivityService::new(ACTIVITY_DB)?;
+    let store_tiles = config.get_bool("extras.store_tiles").unwrap_or(false);
+    let service = ActivityService::new(ACTIVITY_DB, store_tiles)?;
 
     // Channel for distributing the termination signal to the treads
     let (tx_term, rx_term1) = broadcast::channel(1);
