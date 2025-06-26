@@ -2,6 +2,7 @@
 name = "strava-gpx-downloader"
 version = "0.1.0"
 edition = "2021"
+default-run = "strava-gpx-downloader"
 
 [dependencies]
 anyhow = "1.0.75"
