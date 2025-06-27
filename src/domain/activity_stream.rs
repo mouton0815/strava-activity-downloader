@@ -1,57 +1,83 @@
 use std::collections::BTreeSet;
 use std::fmt;
 use std::fmt::Write;
+use std::io::Read;
 use axum::BoxError;
 use serde::Deserialize;
+use gpx::{Gpx, read, Track, TrackSegment};
+use iso8601_timestamp::time::OffsetDateTime;
 use crate::domain::map_tile::MapTile;
 use crate::util::iso8601::{secs_to_string, string_to_secs};
 
-type LatLon = (f64, f64);
+type LatLon = (f64, f64); // TODO: Use crate geo_types!!
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 struct LatLonVec {
     data: Vec<LatLon>
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 struct AltitudeVec {
     data: Vec<f64>
 }
 
-// Distances are always included in the activity stream
-#[derive(Deserialize)]
-struct DistanceVec {
-    data: Vec<f64>
-}
-
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 struct TimeVec {
     data: Vec<u32>
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize, PartialEq)]
 pub struct ActivityStream {
     latlng: LatLonVec,
     altitude: AltitudeVec,
-    distance: DistanceVec,
     time: TimeVec
 }
 
 impl ActivityStream {
     /// Creates an activity stream from coordinates and leaves all other arrays empty (for testing).
-    pub fn from_coords(coords: Vec<LatLon>) -> Self {
+    pub fn new(coords: Vec<LatLon>, altitudes: Vec<f64>, times: Vec<u32>) -> Self {
         ActivityStream {
             latlng: LatLonVec{ data: coords },
-            altitude: AltitudeVec { data: vec![] },
-            distance: DistanceVec { data: vec![] },
-            time: TimeVec { data: vec![] }
+            altitude: AltitudeVec { data: altitudes },
+            time: TimeVec { data: times }
         }
+    }
+
+    pub fn from_gpx<R: Read>(reader: R) -> Result<Self, BoxError> {
+        let gpx: Gpx = read(reader)?;
+        let track: &Track = &gpx.tracks[0];
+        let segment: &TrackSegment = &track.segments[0];
+        let mut coords: Vec<LatLon> = vec![];
+        let mut times: Vec<u32> = vec![];
+        let mut altitudes: Vec<f64> = vec![];
+        let mut start_time: Option<i64> = None;
+        for point in &segment.points {
+            coords.push((point.point().y(), point.point().x())); // TODO: Push point directly once change to geo_types is done
+            altitudes.push(point.elevation.unwrap_or(0.0));
+            if let Some(time) = point.time {
+                let curr_time = OffsetDateTime::from(time).unix_timestamp();
+                match start_time {
+                    Some(start_time) => {
+                        times.push((curr_time - start_time) as u32)
+                    },
+                    None => {
+                        times.push(0);
+                        start_time = Some(curr_time);
+                    }
+                }
+            }
+        }
+        let stream = ActivityStream {
+          latlng: LatLonVec { data: coords },
+          altitude: AltitudeVec { data: altitudes },
+          time: TimeVec { data: times }
+        };
+        Ok(stream)
     }
 
     pub fn to_gpx(&self, activity_id: u64, activity_name: &str, start_time: &str) -> Result<String, BoxError> {
         if self.latlng.data.len() != self.time.data.len() ||
-            self.time.data.len() != self.distance.data.len() ||
-            self.distance.data.len() != self.altitude.data.len() {
+            self.time.data.len() != self.altitude.data.len() {
             Err("Streams have different lengths".into())
         } else {
             let start_time = string_to_secs(start_time);
@@ -105,12 +131,13 @@ impl ActivityStream {
 
 impl fmt::Display for ActivityStream {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "--->{}, {}, {}<---", self.latlng.data.len(), self.distance.data.len(), self.time.data.len())
+        writeln!(f, "--->{}, {}<---", self.latlng.data.len(), self.time.data.len())
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::io::Cursor;
     use crate::ActivityStream;
     use crate::domain::map_tile::MapTile;
 
@@ -119,7 +146,7 @@ mod tests {
   "latlng":{"data":[[51.318165,12.375655],[51.318213,12.395588],[51.318213,12.375588]]},
   "altitude":{"data":[123.456,120.0,100.0]},
   "distance":{"data":[0,1.3,3.7]},
-  "time":{"data":[1,3,5]}
+  "time":{"data":[0,3,7]}
 }"#;
 
     static GPX_REF: &str = r#"<?xml version='1.0' encoding='UTF-8'?>
@@ -135,7 +162,7 @@ mod tests {
     <trkseg>
       <trkpt lat='51.318165' lon='12.375655'>
         <ele>123.456</ele>
-        <time>2024-01-01T00:00:01Z</time>
+        <time>2024-01-01T00:00:00Z</time>
       </trkpt>
       <trkpt lat='51.318213' lon='12.395588'>
         <ele>120.0</ele>
@@ -143,7 +170,7 @@ mod tests {
       </trkpt>
       <trkpt lat='51.318213' lon='12.375588'>
         <ele>100.0</ele>
-        <time>2024-01-01T00:00:05Z</time>
+        <time>2024-01-01T00:00:07Z</time>
       </trkpt>
     </trkseg>
   </trk>
@@ -157,6 +184,20 @@ mod tests {
         let result = stream.unwrap().to_gpx(12345, "Foo Bar", "2024-01-01T00:00:00Z");
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), GPX_REF);
+    }
+
+    #[test]
+    fn test_from_gpx() {
+        let reader = Cursor::new(GPX_REF.as_bytes());
+        let result = ActivityStream::from_gpx(reader);
+        assert!(result.is_ok());
+
+        let reference = ActivityStream::new(
+            vec![(51.318165,12.375655),(51.318213,12.395588),(51.318213,12.375588)],
+            vec![123.456,120.0,100.0],
+            vec![0,3,7]
+        );
+        assert_eq!(result.unwrap(), reference);
     }
 
     #[test]

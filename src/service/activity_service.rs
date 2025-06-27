@@ -145,9 +145,9 @@ mod tests {
         ];
 
         // Contains a duplicate tile, which is filtered out by ActivityStream::to_tiles():
-        let stream1 = ActivityStream::from_coords(vec![(1.0, 1.0),(3.0, 3.0),(1.0, 1.0)]);
+        let stream1 = ActivityStream::new(vec![(1.0, 1.0),(3.0, 3.0),(1.0, 1.0)], vec![], vec![]);
         // Contains a tile that is also part of stream1. It will be deduplicated by database upsert:
-        let stream2 = ActivityStream::from_coords(vec![(2.0, 2.0),(1.0, 1.0)]);
+        let stream2 = ActivityStream::new(vec![(2.0, 2.0),(1.0, 1.0)], vec![], vec![]);
 
         let mut service = create_service();
         assert!(service.add(&activities).is_ok());

@@ -126,9 +126,10 @@ async fn stream_task(state: &MutexSharedState, strava_url: &str, bearer: String)
                 warn!("Strava streams API returned status {:?}, stop downloading", error.status());
                 return Ok(DownloadState::RequestError)
             }
-
+            // match response?.text().await {
             match response?.json::<ActivityStream>().await {
                 Ok(stream) => {
+                    // info!("{:?}", stream);
                     store_gpx(state, &activity, &stream).await?;
                     Ok(DownloadState::Tracks)
                 }
