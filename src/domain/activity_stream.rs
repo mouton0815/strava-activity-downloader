@@ -78,17 +78,11 @@ impl ActivityStream {
     pub fn to_gpx<W: Write>(&self, writer: W, activity_id: u64, activity_name: &str, start_time: &str) -> Result<(), BoxError> {
         if self.latlng.data.len() != self.time.data.len() ||
             self.time.data.len() != self.altitude.data.len() {
-            Err("Streams have different lengths".into())
-        } else {
-            let start_time = string_to_secs(start_time);
-            self.to_gpx_internal(writer, activity_id, activity_name, start_time).map_err(|_| "Formatting error".into())
+            return Err("Streams have different lengths".into());
         }
-    }
-
-    fn to_gpx_internal<W: Write>(&self, writer: W, activity_id: u64, activity_name: &str, start_time: i64) -> Result<(), BoxError> {
         // Escape name according to https://stackoverflow.com/questions/21758345/what-are-the-official-xml-reserved-characters
         let name = activity_name.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
-
+        let start_time = string_to_secs(start_time);
         let mut points: Vec<Waypoint> = Vec::new();
         for i in 0..self.latlng.data.len() {
             let (lat, lon) = &self.latlng.data[i];
