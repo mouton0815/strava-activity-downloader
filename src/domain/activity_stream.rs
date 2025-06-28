@@ -166,14 +166,14 @@ mod tests {
     use crate::domain::map_tile::MapTile;
 
     // Activity streams from java have additional fields like "series_type". They are ignored here.
-    static STREAM: &str = r#"{
+    static STREAM_STR: &str = r#"{
   "latlng":{"data":[[51.318165,12.375655],[51.318213,12.395588],[51.318213,12.375588]]},
   "altitude":{"data":[123.456,120.0,100.0]},
   "distance":{"data":[0,1.3,3.7]},
   "time":{"data":[0,3,7]}
 }"#;
 
-    static GPX_REF: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
+    static GPX_STR: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <gpx version="1.1" xmlns="http://www.topografix.com/GPX/1/1" creator="http://strava.com/">
   <metadata>
     <name>Foo Bar</name>
@@ -201,37 +201,46 @@ mod tests {
 </gpx>"#;
 
     #[test]
+    fn test_deserialize() {
+        let result: serde_json::Result<ActivityStream> = serde_json::from_str(STREAM_STR);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), get_stream());
+    }
+
+    #[test]
     fn test_to_gpx() {
-        let stream : serde_json::Result<ActivityStream> = serde_json::from_str(STREAM);
-        assert!(stream.is_ok());
+        let stream = get_stream();
         let mut buffer: Vec<u8> = Vec::new();
-        assert!(stream.unwrap().to_gpx(&mut buffer, 12345, "Foo Bar", "2024-01-01T00:00:00Z").is_ok());
+        assert!(stream.to_gpx(&mut buffer, 12345, "Foo Bar", "2024-01-01T00:00:00Z").is_ok());
         let result = String::from_utf8(buffer);
         assert!(result.is_ok());
-        assert_eq!(result.unwrap(), GPX_REF);
+        assert_eq!(result.unwrap(), GPX_STR);
     }
 
     #[test]
     fn test_from_gpx() {
-        let reader = Cursor::new(GPX_REF.as_bytes());
+        let reader = Cursor::new(GPX_STR.as_bytes());
         let result = ActivityStream::from_gpx(reader);
         assert!(result.is_ok());
-
-        let reference = ActivityStream::new(
-            vec![(51.318165,12.375655),(51.318213,12.395588),(51.318213,12.375588)],
-            vec![123.456,120.0,100.0],
-            vec![0,3,7]
-        );
-        assert_eq!(result.unwrap(), reference);
+        assert_eq!(result.unwrap(), get_stream());
     }
 
     #[test]
     fn test_to_tiles() {
-        let stream : serde_json::Result<ActivityStream> = serde_json::from_str(STREAM);
+        let stream : serde_json::Result<ActivityStream> = serde_json::from_str(STREAM_STR);
         assert!(stream.is_ok());
         let result = stream.unwrap().to_tiles(14);
         assert!(result.is_ok());
         let reference = vec!(MapTile::new(8755, 5461), MapTile::new(8756, 5461));
         assert_eq!(result.unwrap(), reference);
+    }
+
+    // vec! cannot be static or const, so use a function here
+    fn get_stream() -> ActivityStream {
+        ActivityStream::new(
+            vec![(51.318165,12.375655),(51.318213,12.395588),(51.318213,12.375588)],
+            vec![123.456,120.0,100.0],
+            vec![0,3,7]
+        )
     }
 }
