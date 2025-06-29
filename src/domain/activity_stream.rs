@@ -9,7 +9,6 @@ use iso8601_timestamp::time::OffsetDateTime;
 use crate::domain::map_tile::MapTile;
 use crate::util::iso8601::string_to_secs;
 
-
 // Note: Cannot use geo_types::Point because it expects an object serialization
 // format { x: lon, y: lat } whereas Strava delivers an array [lat, lon].
 type LatLon = (f64, f64);

@@ -16,6 +16,6 @@ pub fn write_gpx(activity: &Activity, stream: &ActivityStream) -> Result<(), Box
     fs::create_dir_all(data_path.parent().unwrap())?;
     let gpx_file = fs::File::create(data_path)?;
     let buffer = BufWriter::new(gpx_file);
-    stream.to_gpx(buffer, id.clone(), &activity.name, &activity.start_date)?;
+    stream.to_gpx(buffer, *id, &activity.name, &activity.start_date)?;
     Ok(())
 }
