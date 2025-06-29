@@ -1,28 +1,38 @@
+use std::collections::HashMap;
 use std::error::Error;
 use axum::BoxError;
 use log::{debug, info, warn};
 use rusqlite::Connection;
 use crate::{ActivityStream, write_gpx};
 use crate::database::activity_table::ActivityTable;
-use crate::database::maptile_table::{MapTileRow, MapTileTable, Zoom14, Zoom17};
+use crate::database::maptile_table::{MapTileRow, MapTileTable};
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
 use crate::domain::gpx_store_state::GpxStoreState;
+use crate::domain::map_tile_zoom::MapTileZoom;
+
+type TileTableMap = HashMap<MapTileZoom, MapTileTable>;
 
 pub struct ActivityService {
     connection: Connection,
-    store_tiles: bool
+    tile_tables: Option<TileTableMap>,
 }
 
 impl ActivityService {
     pub fn new(db_path: &str, store_tiles: bool) -> Result<Self, Box<dyn Error>> {
         let connection = Connection::open(db_path)?;
         ActivityTable::create_table(&connection)?;
+        let mut tile_tables: Option<TileTableMap> = None;
         if store_tiles {
-            MapTileTable::<Zoom14>::create_table(&connection)?;
-            MapTileTable::<Zoom17>::create_table(&connection)?;
+            let mut tables: TileTableMap = HashMap::new();
+            for zoom in MapTileZoom::VALUES {
+                let table = MapTileTable::new(zoom.clone());
+                table.create_table(&connection)?;
+                tables.insert(zoom, table);
+            }
+            tile_tables = Some(tables);
         }
-        Ok(Self{ connection, store_tiles })
+        Ok(Self{ connection, tile_tables })
     }
 
     /// Adds all activities to the database and returns the computed [ActivityStats]
@@ -81,28 +91,31 @@ impl ActivityService {
     }
 
     fn save_tiles(&mut self, activity_id: u64, stream: &ActivityStream) -> Result<(), BoxError> {
-        if self.store_tiles {
+        if let Some(tile_tables) = &self.tile_tables {
             let tx = self.connection.transaction()?;
-            for tile in stream.to_tiles(Zoom14::ZOOM)? {
-                MapTileTable::<Zoom14>::upsert(&tx, &tile, activity_id)?;
-            }
-            for tile in stream.to_tiles(Zoom17::ZOOM)? {
-                MapTileTable::<Zoom17>::upsert(&tx, &tile, activity_id)?;
+            for zoom in MapTileZoom::VALUES {
+                let table = &tile_tables[&zoom];
+                for tile in stream.to_tiles(zoom.value())? {
+                    table.upsert(&tx, &tile, activity_id)?;
+                }
             }
             tx.commit()?;
         }
         Ok(())
     }
 
-    pub fn get_tiles(&mut self) -> Result<Vec<MapTileRow>, BoxError> {
-        if self.store_tiles {
-            let tx = self.connection.transaction()?;
-            let results = MapTileTable::<Zoom14>::select_all(&tx)?;
-            tx.commit()?;
-            Ok(results)
-        } else {
-            warn!("Tile storage disabled");
-            Ok(vec![])
+    pub fn get_tiles(&mut self, zoom: MapTileZoom) -> Result<Vec<MapTileRow>, BoxError> {
+        match &self.tile_tables {
+            Some(tile_tables) => {
+                let tx = self.connection.transaction()?;
+                let results = tile_tables[&zoom].select_all(&tx)?;
+                tx.commit()?;
+                Ok(results)
+            },
+            None => {
+                warn!("Tile storage disabled");
+                Ok(vec![])
+            }
         }
     }
 }
@@ -115,6 +128,7 @@ mod tests {
     use crate::domain::activity_stats::ActivityStats;
     use crate::domain::activity_stream::ActivityStream;
     use crate::domain::map_tile::MapTile;
+    use crate::domain::map_tile_zoom::MapTileZoom;
 
     #[test]
     fn test_add_none() {
@@ -157,7 +171,7 @@ mod tests {
         assert!(service.save_tiles(5, &stream1).is_ok());
         assert!(service.save_tiles(7, &stream2).is_ok());
 
-        let results = service.get_tiles();
+        let results = service.get_tiles(MapTileZoom::ZOOM14);
         assert!(results.is_ok());
         assert_eq!(results.unwrap(), vec![
             MapTileRow::new(MapTile::new(8237, 8146), 5, 2), // [1.0, 1.0]
