@@ -26,6 +26,11 @@ struct TimeVec {
     data: Vec<u32>
 }
 
+/// An activity stream as returned by Strava https://developers.strava.com/docs/reference/#api-Streams-getActivityStreams.
+/// There are three ways to construct it:
+/// * By deserializing the JSON response of the Strava API
+/// * By creating it from a GPX file with [ActivityStream::from_gpx]
+/// * By calling [ActivityStream::new]
 #[derive(Debug, Deserialize, PartialEq)]
 pub struct ActivityStream {
     latlng: LatLonVec,
@@ -194,6 +199,15 @@ mod tests {
   </trk>
 </gpx>"#;
 
+    // vec! cannot be static or const, so use a function here
+    fn get_stream() -> ActivityStream {
+        ActivityStream::new(
+            vec![(51.318165,12.375655),(51.318213,12.395588),(51.318213,12.375588)],
+            vec![123.456,120.0,100.0],
+            vec![0,3,7]
+        )
+    }
+
     #[test]
     fn test_deserialize() {
         let result: serde_json::Result<ActivityStream> = serde_json::from_str(STREAM_STR);
@@ -227,14 +241,5 @@ mod tests {
         assert!(result.is_ok());
         let reference = vec!(MapTile::new(8755, 5461), MapTile::new(8756, 5461));
         assert_eq!(result.unwrap(), reference);
-    }
-
-    // vec! cannot be static or const, so use a function here
-    fn get_stream() -> ActivityStream {
-        ActivityStream::new(
-            vec![(51.318165,12.375655),(51.318213,12.395588),(51.318213,12.375588)],
-            vec![123.456,120.0,100.0],
-            vec![0,3,7]
-        )
     }
 }
