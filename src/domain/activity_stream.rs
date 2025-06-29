@@ -2,14 +2,17 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::io::{Read, Write};
 use axum::BoxError;
-use serde::Deserialize;
 use geo_types::Point;
+use serde::Deserialize;
 use gpx::{Gpx, GpxVersion, Link, Metadata, read, Track, TrackSegment, Waypoint};
 use iso8601_timestamp::time::OffsetDateTime;
 use crate::domain::map_tile::MapTile;
 use crate::util::iso8601::string_to_secs;
 
-type LatLon = (f64, f64); // TODO: Use crate geo_types!!
+
+// Note: Cannot use geo_types::Point because it expects an object serialization
+// format { x: lon, y: lat } whereas Strava delivers an array [lat, lon].
+type LatLon = (f64, f64);
 
 #[derive(Debug, Deserialize, PartialEq)]
 struct LatLonVec {
@@ -57,7 +60,7 @@ impl ActivityStream {
         let mut altitudes: Vec<f64> = vec![];
         let mut start_time: Option<i64> = None;
         for point in &segment.points {
-            coords.push((point.point().y(), point.point().x())); // TODO: Push point directly once change to geo_types is done
+            coords.push((point.point().y(), point.point().x()));
             altitudes.push(point.elevation.unwrap_or(0.0));
             if let Some(time) = point.time {
                 let curr_time = OffsetDateTime::from(time).unix_timestamp();
@@ -94,7 +97,7 @@ impl ActivityStream {
             let altitude = &self.altitude.data[i];
             let time = start_time + self.time.data[i] as i64;
             let time= OffsetDateTime::from_unix_timestamp(time).unwrap();
-            let mut point = Waypoint::new(Point::new(*lon, *lat)); // TODO: Get point directly once change to geo_types is done
+            let mut point = Waypoint::new(Point::new(*lon, *lat));
             point.elevation = Some(*altitude);
             point.time = Some(time.into());
             points.push(point);

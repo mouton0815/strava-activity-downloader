@@ -2,13 +2,11 @@ use std::fs::File;
 use std::io::BufReader;
 use gpx::{Gpx, read, Track, TrackSegment};
 
-// TODO: Use crate geo_types!!
-
 fn main() {
     println!("Hello");
     // Iterate over activities by increasing start_date
     //   If an activity has gpx_fetched = 1 then
-    //     load the corresponding GPX file (TODO: This is not possible at the moment, see https://docs.rs/gpx/latest/gpx/)
+    //     load the corresponding GPX file
     //     generate and write the tiles for the corresponding activityID
 
     let file = File::open("/Users/torsten/git/strava-activity-downloader/data/2024/07/11936054836.gpx").unwrap();
