@@ -1,9 +1,30 @@
+use std::marker::PhantomData;
 use log::debug;
 use rusqlite::{Connection, params, Result, Transaction};
 use crate::domain::map_tile::MapTile;
 
+trait TileTableName {
+    fn table_name() -> &'static str;
+}
+
+pub struct Zoom14;
+
+impl Zoom14 { pub const ZOOM: u16 = 14; }
+
+impl TileTableName for Zoom14 {
+    fn table_name() -> &'static str { "maptile14" }
+}
+
+pub struct Zoom17;
+
+impl Zoom17 { pub const ZOOM: u16 = 17; }
+
+impl TileTableName for Zoom17 {
+    fn table_name() -> &'static str { "maptile17" }
+}
+
 const CREATE_TILE_TABLE : &'static str =
-    "CREATE TABLE IF NOT EXISTS maptile (
+    "CREATE TABLE IF NOT EXISTS $table_name (
         x INTEGER NOT NULL,
         y INTEGER NOT NULL,
         activity_id INTEGER NOT NULL,
@@ -13,7 +34,7 @@ const CREATE_TILE_TABLE : &'static str =
     )";
 
 const UPSERT_TILE: &'static str =
-    "INSERT INTO maptile (x, y, activity_id, activity_count) \
+    "INSERT INTO $table_name (x, y, activity_id, activity_count) \
      VALUES (?, ?, ?, 1) \
      ON CONFLICT(x, y) DO \
      UPDATE SET activity_count = excluded.activity_count + 1";
@@ -21,7 +42,7 @@ const UPSERT_TILE: &'static str =
 // TODO: Deletion ... support it?
 
 const SELECT_TILES : &'static str =
-    "SELECT x, y, activity_id, activity_count FROM maptile ORDER BY x, y";
+    "SELECT x, y, activity_id, activity_count FROM $table_name ORDER BY x, y";
 
 #[derive(Debug, PartialEq)]
 pub struct MapTileRow { // TODO: Better name
@@ -36,24 +57,29 @@ impl MapTileRow {
     }
 }
 
-pub struct MapTileTable;
+pub struct MapTileTable<T: TileTableName> {
+    _marker: PhantomData<T> // Otherwise Rust complains about unused generic type T
+}
 
-impl MapTileTable {
+impl<T: TileTableName> MapTileTable<T> {
     pub fn create_table(conn: &Connection) -> Result<()> {
-        // let sql = CREATE_TILE_TABLE.replace("maptile", "maptile14");
-        debug!("Execute\n{}", CREATE_TILE_TABLE);
-        conn.execute(CREATE_TILE_TABLE, [])?;
+        let sql = Self::get_sql(CREATE_TILE_TABLE);
+        debug!("Execute\n{}", sql);
+        conn.execute(sql.as_str(), [])?;
         Ok(())
     }
 
     pub fn upsert(tx: &Transaction, tile: &MapTile, activity_id: u64) -> Result<()> {
+        let sql = Self::get_sql(UPSERT_TILE);
         let values = params![tile.get_x(), tile.get_y(), activity_id];
-        tx.execute(UPSERT_TILE, values).map(|_| ()) // Ignore returned row count
+        debug!("Execute\n{}\nwith {}, {}, {}", sql, tile.get_x(), tile.get_y(), activity_id);
+        tx.execute(sql.as_str(), values).map(|_| ()) // Ignore returned row count
     }
 
     pub fn select_all(tx: &Transaction) -> Result<Vec<MapTileRow>> {
-        debug!("Execute\n{}", SELECT_TILES);
-        let mut stmt = tx.prepare(SELECT_TILES)?;
+        let sql = Self::get_sql(SELECT_TILES);
+        debug!("Execute\n{}", sql);
+        let mut stmt = tx.prepare(sql.as_str())?;
         let tile_iter = stmt.query_map([], |row| {
             Ok(MapTileRow::new(
                 MapTile::new(row.get(0)?, row.get(1)?),
@@ -67,13 +93,17 @@ impl MapTileTable {
         }
         Ok(tile_vec)
     }
+
+    fn get_sql(sql: &str) -> String {
+        sql.replace("$table_name", T::table_name())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use rusqlite::Connection;
     use crate::database::activity_table::ActivityTable;
-    use crate::database::maptile_table::{MapTileRow, MapTileTable};
+    use crate::database::maptile_table::{MapTileRow, MapTileTable, Zoom14};
     use crate::domain::activity::Activity;
     use crate::domain::map_tile::MapTile;
 
@@ -85,15 +115,15 @@ mod tests {
 
         let mut conn = create_connection();
         assert!(ActivityTable::create_table(&conn).is_ok());
-        assert!(MapTileTable::create_table(&conn).is_ok());
+        assert!(MapTileTable::<Zoom14>::create_table(&conn).is_ok());
 
         let tx = conn.transaction().unwrap();
         assert!(ActivityTable::insert(&tx, &Activity::dummy(1, "foo")).is_ok());
         assert!(ActivityTable::insert(&tx, &Activity::dummy(2, "bar")).is_ok());
 
-        assert!(MapTileTable::upsert(&tx, &tile1, 1).is_ok());
-        assert!(MapTileTable::upsert(&tx, &tile2, 2).is_ok());
-        assert!(MapTileTable::upsert(&tx, &tile3, 1).is_ok()); // tile3 overwrites tile1
+        assert!(MapTileTable::<Zoom14>::upsert(&tx, &tile1, 1).is_ok());
+        assert!(MapTileTable::<Zoom14>::upsert(&tx, &tile2, 2).is_ok());
+        assert!(MapTileTable::<Zoom14>::upsert(&tx, &tile3, 1).is_ok()); // tile3 overwrites tile1
         assert!(tx.commit().is_ok());
 
         let ref_tile_rows = [
@@ -112,7 +142,7 @@ mod tests {
     fn check_results(conn: &mut Connection, ref_tile_rows: &[&MapTileRow]) {
         let tx = conn.transaction().unwrap();
 
-        let tile_rows = MapTileTable::select_all(&tx);
+        let tile_rows = MapTileTable::<Zoom14>::select_all(&tx);
         assert!(tile_rows.is_ok());
         assert!(tx.commit().is_ok());
 

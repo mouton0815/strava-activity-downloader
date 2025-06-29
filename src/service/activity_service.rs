@@ -4,7 +4,7 @@ use log::{debug, info, warn};
 use rusqlite::Connection;
 use crate::{ActivityStream, write_gpx};
 use crate::database::activity_table::ActivityTable;
-use crate::database::maptile_table::{MapTileRow, MapTileTable};
+use crate::database::maptile_table::{MapTileRow, MapTileTable, Zoom14, Zoom17};
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
 use crate::domain::gpx_store_state::GpxStoreState;
@@ -19,7 +19,8 @@ impl ActivityService {
         let connection = Connection::open(db_path)?;
         ActivityTable::create_table(&connection)?;
         if store_tiles {
-            MapTileTable::create_table(&connection)?;
+            MapTileTable::<Zoom14>::create_table(&connection)?;
+            MapTileTable::<Zoom17>::create_table(&connection)?;
         }
         Ok(Self{ connection, store_tiles })
     }
@@ -82,9 +83,11 @@ impl ActivityService {
     fn save_tiles(&mut self, activity_id: u64, stream: &ActivityStream) -> Result<(), BoxError> {
         if self.store_tiles {
             let tx = self.connection.transaction()?;
-            let tiles = stream.to_tiles(14)?; // TODO: zoom
-            for tile in tiles {
-                MapTileTable::upsert(&tx, &tile, activity_id)?;
+            for tile in stream.to_tiles(Zoom14::ZOOM)? {
+                MapTileTable::<Zoom14>::upsert(&tx, &tile, activity_id)?;
+            }
+            for tile in stream.to_tiles(Zoom17::ZOOM)? {
+                MapTileTable::<Zoom17>::upsert(&tx, &tile, activity_id)?;
             }
             tx.commit()?;
         }
@@ -94,7 +97,7 @@ impl ActivityService {
     pub fn get_tiles(&mut self) -> Result<Vec<MapTileRow>, BoxError> {
         if self.store_tiles {
             let tx = self.connection.transaction()?;
-            let results = MapTileTable::select_all(&tx)?;
+            let results = MapTileTable::<Zoom14>::select_all(&tx)?;
             tx.commit()?;
             Ok(results)
         } else {
