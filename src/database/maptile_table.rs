@@ -19,13 +19,11 @@ const UPSERT_TILE: &'static str =
      ON CONFLICT(x, y) DO \
      UPDATE SET activity_count = excluded.activity_count + 1";
 
-// TODO: Deletion ... support it?
-
 const SELECT_TILES : &'static str =
     "SELECT x, y, activity_id, activity_count FROM $table_name ORDER BY x, y";
 
 #[derive(Debug, PartialEq)]
-pub struct MapTileRow { // TODO: Better name
+pub struct MapTileRow {
     tile: MapTile,
     activity_id: i64,
     activity_count: u32
