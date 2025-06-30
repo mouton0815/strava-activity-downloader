@@ -9,9 +9,9 @@ use crate::database::maptile_table::{MapTileRow, MapTileTable};
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
 use crate::domain::gpx_store_state::GpxStoreState;
-use crate::domain::map_tile_zoom::MapTileZoom;
+use crate::domain::map_zoom::MapZoom;
 
-type TileTableMap = HashMap<MapTileZoom, MapTileTable>;
+type TileTableMap = HashMap<MapZoom, MapTileTable>;
 
 pub struct ActivityService {
     connection: Connection,
@@ -25,7 +25,7 @@ impl ActivityService {
         let mut tile_tables: Option<TileTableMap> = None;
         if store_tiles {
             let mut tables: TileTableMap = HashMap::new();
-            for zoom in MapTileZoom::VALUES {
+            for zoom in MapZoom::VALUES {
                 let table = MapTileTable::new(zoom.clone());
                 table.create_table(&connection)?;
                 tables.insert(zoom, table);
@@ -93,9 +93,9 @@ impl ActivityService {
     fn save_tiles(&mut self, activity_id: u64, stream: &ActivityStream) -> Result<(), BoxError> {
         if let Some(tile_tables) = &self.tile_tables {
             let tx = self.connection.transaction()?;
-            for zoom in MapTileZoom::VALUES {
+            for zoom in MapZoom::VALUES {
                 let table = &tile_tables[&zoom];
-                for tile in stream.to_tiles(zoom.value())? {
+                for tile in stream.to_tiles(zoom)? {
                     table.upsert(&tx, &tile, activity_id)?;
                 }
             }
@@ -104,7 +104,7 @@ impl ActivityService {
         Ok(())
     }
 
-    pub fn get_tiles(&mut self, zoom: MapTileZoom) -> Result<Vec<MapTileRow>, BoxError> {
+    pub fn get_tiles(&mut self, zoom: MapZoom) -> Result<Vec<MapTileRow>, BoxError> {
         match &self.tile_tables {
             Some(tile_tables) => {
                 let tx = self.connection.transaction()?;
@@ -128,7 +128,7 @@ mod tests {
     use crate::domain::activity_stats::ActivityStats;
     use crate::domain::activity_stream::ActivityStream;
     use crate::domain::map_tile::MapTile;
-    use crate::domain::map_tile_zoom::MapTileZoom;
+    use crate::domain::map_zoom::MapZoom;
 
     #[test]
     fn test_add_none() {
@@ -171,7 +171,7 @@ mod tests {
         assert!(service.save_tiles(5, &stream1).is_ok());
         assert!(service.save_tiles(7, &stream2).is_ok());
 
-        let results = service.get_tiles(MapTileZoom::ZOOM14);
+        let results = service.get_tiles(MapZoom::Level14);
         assert!(results.is_ok());
         assert_eq!(results.unwrap(), vec![
             MapTileRow::new(MapTile::new(8237, 8146), 5, 2), // [1.0, 1.0]

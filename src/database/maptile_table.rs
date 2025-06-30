@@ -1,7 +1,7 @@
 use log::debug;
 use rusqlite::{Connection, params, Result, Transaction};
+use crate::domain::map_zoom::MapZoom;
 use crate::domain::map_tile::MapTile;
-use crate::domain::map_tile_zoom::MapTileZoom;
 
 const CREATE_TILE_TABLE : &'static str =
     "CREATE TABLE IF NOT EXISTS $table_name (
@@ -42,7 +42,7 @@ pub struct MapTileTable {
 }
 
 impl MapTileTable {
-    pub fn new(zoom: MapTileZoom) -> Self {
+    pub fn new(zoom: MapZoom) -> Self {
         let table_name = format!("maptile{}", zoom.value());
         Self { table_name }
     }
@@ -91,7 +91,7 @@ mod tests {
     use crate::database::maptile_table::{MapTileRow, MapTileTable};
     use crate::domain::activity::Activity;
     use crate::domain::map_tile::MapTile;
-    use crate::domain::map_tile_zoom::MapTileZoom;
+    use crate::domain::map_zoom::MapZoom;
 
     #[test]
     fn test_upsert() {
@@ -99,7 +99,7 @@ mod tests {
         let tile2 = MapTile::new(2, 2);
         let tile3 = MapTile::new(1, 1); // Identical to tile1
 
-        let tile_table = MapTileTable::new(MapTileZoom::ZOOM14);
+        let tile_table = MapTileTable::new(MapZoom::Level14);
 
         let mut conn = create_connection();
         assert!(ActivityTable::create_table(&conn).is_ok());

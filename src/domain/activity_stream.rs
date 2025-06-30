@@ -7,6 +7,7 @@ use serde::Deserialize;
 use gpx::{Gpx, GpxVersion, Link, Metadata, read, Track, TrackSegment, Waypoint};
 use iso8601_timestamp::time::OffsetDateTime;
 use crate::domain::map_tile::MapTile;
+use crate::domain::map_zoom::MapZoom;
 use crate::util::iso8601::string_to_secs;
 
 // Note: Cannot use geo_types::Point because it expects an object serialization
@@ -142,7 +143,7 @@ impl ActivityStream {
 
     /// Returns the list of unique [MapTile]s touched by this activity stream.
     /// The returned list is sorted and does not contain duplicate tiles.
-    pub fn to_tiles(&self, zoom: u16) -> Result<Vec<MapTile>, BoxError> {
+    pub fn to_tiles(&self, zoom: MapZoom) -> Result<Vec<MapTile>, BoxError> {
         let coords: &Vec<(f64, f64)> = self.latlng.data.as_ref();
         let tiles = coords
             .into_iter()
@@ -165,6 +166,7 @@ mod tests {
     use std::io::Cursor;
     use crate::ActivityStream;
     use crate::domain::map_tile::MapTile;
+    use crate::domain::map_zoom::MapZoom;
 
     // Activity streams from java have additional fields like "series_type". They are ignored here.
     static STREAM_STR: &str = r#"{
@@ -239,7 +241,7 @@ mod tests {
     fn test_to_tiles() {
         let stream : serde_json::Result<ActivityStream> = serde_json::from_str(STREAM_STR);
         assert!(stream.is_ok());
-        let result = stream.unwrap().to_tiles(14);
+        let result = stream.unwrap().to_tiles(MapZoom::Level14);
         assert!(result.is_ok());
         let reference = vec!(MapTile::new(8755, 5461), MapTile::new(8756, 5461));
         assert_eq!(result.unwrap(), reference);

@@ -1,4 +1,5 @@
 use std::f64::consts::PI;
+use crate::domain::map_zoom::MapZoom;
 
 /// Represents a slippy map tile (see https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames)
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -18,8 +19,8 @@ impl MapTile {
     /// @param lon - a longitude
     /// @param zoom - a map zoom level
     /// @returns the corresponding tile number
-    pub fn from_coords(lat: f64, lon: f64, zoom: u16) -> Self {
-        let z_pow = (1 << zoom) as f64; // Math.pow(2, zoom)
+    pub fn from_coords(lat: f64, lon: f64, zoom: MapZoom) -> Self {
+        let z_pow = (1 << zoom.value()) as f64; // Math.pow(2, zoom)
         let lat_rad = (lat * PI) / 180.0;
         let x = (((lon + 180.0) / 360.0) * z_pow).floor() as u64;
         let y = (((1.0 - (lat_rad.tan() + 1.0 / lat_rad.cos()).ln() / PI) / 2.0) * z_pow).floor() as u64;
@@ -38,8 +39,9 @@ impl MapTile {
 #[cfg(test)]
 mod tests {
     use crate::domain::map_tile::MapTile;
+    use crate::domain::map_zoom::MapZoom;
 
-    const ZOOM: u16 = 14;
+    const ZOOM: MapZoom = MapZoom::Level14;
 
     // Jena city center tile inner coord and edge coords
     const JENA_LAT_N: f64 = 50.930738023718185;
