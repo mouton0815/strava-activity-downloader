@@ -99,11 +99,7 @@ impl ActivityTable {
         let activity_iter = stmt.query_map([], |row| {
             Self::row_to_activity(row)
         })?;
-        let mut activity_vec = ActivityVec::new();
-        for activity in activity_iter {
-            activity_vec.push(activity?)
-        }
-        Ok(activity_vec)
+        Ok(activity_iter.collect::<Result<_, _>>()?)
     }
 
     pub fn select_by_id(tx: &Transaction, id: u64) -> Result<Option<Activity>> {
@@ -120,11 +116,7 @@ impl ActivityTable {
         let activity_iter = stmt.query_map([], |row| {
             Self::row_to_activity(row)
         })?;
-        let mut activity_vec = ActivityVec::new();
-        for activity in activity_iter { // TODO: Can this be done as stream transformation?
-            activity_vec.push(activity?)
-        }
-        Ok(activity_vec)
+        Ok(activity_iter.collect::<Result<_, _>>()?)
     }
 
     pub fn select_earliest_without_gpx(tx: &Transaction) -> Result<Option<Activity>> {
