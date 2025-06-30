@@ -14,8 +14,8 @@ use crate::downloader::spawn_download_scheduler;
 use crate::service::activity_service::ActivityService;
 use crate::state::shared_state::SharedState;
 use crate::util::shutdown_signal::shutdown_signal;
-use crate::util::write_gpx::write_gpx;
 
+// TODO: Still needed now we have lib.rs?
 mod oauth;
 mod rest;
 mod downloader;

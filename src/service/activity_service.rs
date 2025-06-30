@@ -3,13 +3,14 @@ use std::error::Error;
 use axum::BoxError;
 use log::{debug, info, warn};
 use rusqlite::Connection;
-use crate::{ActivityStream, write_gpx};
 use crate::database::activity_table::ActivityTable;
 use crate::database::maptile_table::{MapTileRow, MapTileTable};
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
+use crate::domain::activity_stream::ActivityStream;
 use crate::domain::gpx_store_state::GpxStoreState;
 use crate::domain::map_zoom::MapZoom;
+use crate::util::write_gpx::write_gpx;
 
 type TileTableMap = HashMap<MapZoom, MapTileTable>;
 
@@ -72,13 +73,21 @@ impl ActivityService {
         Ok(activity)
     }
 
+    pub fn get_all_with_gpx(&mut self) -> Result<ActivityVec, BoxError> {
+        let tx = self.connection.transaction()?;
+        let activities = ActivityTable::select_all_with_gpx(&tx)?;
+        tx.commit()?;
+        debug!("Number of activities with GPX: {:?}", activities.len());
+        Ok(activities)
+    }
+
     pub fn store_gpx(&mut self, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
         // Store GPX file ...
         write_gpx(activity, stream)?;
         // ... then mark the corresponding activity
         self.mark_gpx(activity, GpxStoreState::Stored)?;
         // ... finally compute the tiles and store them
-        self.save_tiles(activity.id, stream)?;
+        self.put_tiles(activity, stream)?;
         Ok(())
     }
 
@@ -90,13 +99,13 @@ impl ActivityService {
         Ok(())
     }
 
-    fn save_tiles(&mut self, activity_id: u64, stream: &ActivityStream) -> Result<(), BoxError> {
+    pub fn put_tiles(&mut self, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
         if let Some(tile_tables) = &self.tile_tables {
             let tx = self.connection.transaction()?;
             for zoom in MapZoom::VALUES {
                 let table = &tile_tables[&zoom];
                 for tile in stream.to_tiles(zoom)? {
-                    table.upsert(&tx, &tile, activity_id)?;
+                    table.upsert(&tx, &tile, activity.id)?;
                 }
             }
             tx.commit()?;
@@ -122,13 +131,13 @@ impl ActivityService {
 
 #[cfg(test)]
 mod tests {
-    use crate::ActivityService;
     use crate::database::maptile_table::MapTileRow;
     use crate::domain::activity::{Activity, ActivityVec};
     use crate::domain::activity_stats::ActivityStats;
     use crate::domain::activity_stream::ActivityStream;
     use crate::domain::map_tile::MapTile;
     use crate::domain::map_zoom::MapZoom;
+    use crate::service::activity_service::ActivityService;
 
     #[test]
     fn test_add_none() {
@@ -168,8 +177,8 @@ mod tests {
 
         let mut service = create_service();
         assert!(service.add(&activities).is_ok());
-        assert!(service.save_tiles(5, &stream1).is_ok());
-        assert!(service.save_tiles(7, &stream2).is_ok());
+        assert!(service.put_tiles(&activities[0], &stream1).is_ok());
+        assert!(service.put_tiles(&activities[1], &stream2).is_ok());
 
         let results = service.get_tiles(MapZoom::Level14);
         assert!(results.is_ok());

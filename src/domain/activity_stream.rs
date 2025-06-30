@@ -164,7 +164,7 @@ impl fmt::Display for ActivityStream {
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
-    use crate::ActivityStream;
+    use crate::domain::activity_stream::ActivityStream;
     use crate::domain::map_tile::MapTile;
     use crate::domain::map_zoom::MapZoom;
 

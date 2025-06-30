@@ -52,6 +52,9 @@ const SELECT_ACTIVITY : &'static str =
 const SELECT_EARLIEST_ACTIVITY_WITHOUT_GPX : &'static str =
     concatcp!(SELECT_ACTIVITIES, " WHERE gpx_fetched = 0 and start_date = (SELECT MIN(start_date) from activity WHERE gpx_fetched = 0)");
 
+const SELECT_ACTIVITIES_WITH_GPX : &'static str =
+    concatcp!(SELECT_ACTIVITIES, " WHERE gpx_fetched = 1 ORDER BY start_date ASC");
+
 const SELECT_ACTIVITY_STATS: &'static str =
     "SELECT COUNT(id), MIN(start_date), MAX(start_date) FROM activity";
 
@@ -109,6 +112,19 @@ impl ActivityTable {
         stmt.query_row([id], |row | {
             Ok(Self::row_to_activity(row)?)
         }).optional()
+    }
+
+    pub fn select_all_with_gpx(tx: &Transaction) -> Result<ActivityVec> {
+        debug!("Execute\n{}", SELECT_ACTIVITIES_WITH_GPX);
+        let mut stmt = tx.prepare(SELECT_ACTIVITIES_WITH_GPX)?;
+        let activity_iter = stmt.query_map([], |row| {
+            Self::row_to_activity(row)
+        })?;
+        let mut activity_vec = ActivityVec::new();
+        for activity in activity_iter { // TODO: Can this be done as stream transformation?
+            activity_vec.push(activity?)
+        }
+        Ok(activity_vec)
     }
 
     pub fn select_earliest_without_gpx(tx: &Transaction) -> Result<Option<Activity>> {
@@ -289,6 +305,27 @@ mod tests {
         let result = ActivityTable::select_earliest_without_gpx(&tx);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), None);
+        assert!(tx.commit().is_ok());
+    }
+
+    #[test]
+    fn test_all_with_gpx() {
+        // Note: Inverse timely order:
+        let activity1 = Activity::dummy(3, "2018-02-20T18:02:15Z");
+        let activity2 = Activity::dummy(5, "2018-02-20T18:02:13Z");
+        let activity3 = Activity::dummy(7, "2018-02-20T18:02:11Z");
+
+        let mut conn = create_connection_and_table();
+        let tx = conn.transaction().unwrap();
+        ActivityTable::upsert(&tx, &activity1).unwrap();
+        ActivityTable::upsert(&tx, &activity2).unwrap();
+        ActivityTable::upsert(&tx, &activity3).unwrap();
+        ActivityTable::update_gpx_column(&tx, 3, GpxStoreState::Stored).unwrap();
+        ActivityTable::update_gpx_column(&tx, 7, GpxStoreState::Stored).unwrap();
+
+        let result = ActivityTable::select_all_with_gpx(&tx);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), vec![activity3, activity1]);
         assert!(tx.commit().is_ok());
     }
 
