@@ -10,7 +10,7 @@ use oauth2::{AuthorizationCode, AuthType, AuthUrl, ClientId, ClientSecret, CsrfT
 use oauth2::reqwest::async_http_client;
 use url::Url;
 use crate::oauth::token;
-use crate::{Bearer, TokenHolder};
+use crate::oauth::token::{Bearer, TokenHolder};
 
 type TokenResult = Result<TokenHolder, BoxError>;
 type UrlResult = Result<String, BoxError>;

@@ -5,7 +5,7 @@ use tokio::sync::Mutex;
 use crate::domain::activity_stats::ActivityStats;
 use crate::domain::download_state::DownloadState;
 use crate::domain::server_status::ServerStatus;
-use crate::OAuthClient;
+use crate::oauth::oauth_client::OAuthClient;
 use crate::service::activity_service::ActivityService;
 
 // TODO: Unit tests!

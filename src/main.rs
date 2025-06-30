@@ -4,26 +4,14 @@ use config::{Config, File};
 use log::info;
 use tokio::join;
 use tokio::sync::broadcast;
-use crate::domain::activity_stream::ActivityStream;
-use crate::domain::server_status::ServerStatus;
-use crate::oauth::oauth_client::OAuthClient;
-use crate::oauth::token::{Bearer, TokenHolder};
-use crate::rest::rest_paths::{AUTH_CALLBACK, STATUS};
-use crate::rest::http_server::spawn_http_server;
-use crate::downloader::spawn_download_scheduler;
-use crate::service::activity_service::ActivityService;
-use crate::state::shared_state::SharedState;
-use crate::util::shutdown_signal::shutdown_signal;
-
-// TODO: Still needed now we have lib.rs?
-mod oauth;
-mod rest;
-mod downloader;
-mod database;
-mod domain;
-mod util;
-mod state;
-mod service;
+use strava_gpx_downloader::domain::server_status::ServerStatus;
+use strava_gpx_downloader::downloader::spawn_download_scheduler;
+use strava_gpx_downloader::oauth::oauth_client::OAuthClient;
+use strava_gpx_downloader::rest::http_server::spawn_http_server;
+use strava_gpx_downloader::rest::rest_paths::{AUTH_CALLBACK, STATUS};
+use strava_gpx_downloader::service::activity_service::ActivityService;
+use strava_gpx_downloader::state::shared_state::SharedState;
+use strava_gpx_downloader::util::shutdown_signal::shutdown_signal;
 
 const CONFIG_YAML : &'static str = "conf/application.yaml";
 const ACTIVITY_DB: &'static str = "activity.db";

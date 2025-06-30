@@ -4,12 +4,13 @@ use axum::BoxError;
 use tokio::sync::broadcast::Receiver;
 use tokio::task::JoinHandle;
 use tokio::time;
-use crate::{ActivityStream, Bearer};
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
+use crate::domain::activity_stream::ActivityStream;
 use crate::domain::download_delay::DownloadDelay;
 use crate::domain::download_state::DownloadState;
 use crate::domain::gpx_store_state::GpxStoreState;
+use crate::oauth::token::Bearer;
 use crate::state::shared_state::MutexSharedState;
 
 async fn get_download_state(state: &MutexSharedState) -> DownloadState {
