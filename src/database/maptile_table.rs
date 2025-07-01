@@ -1,4 +1,4 @@
-use log::debug;
+use log::{debug, trace};
 use rusqlite::{Connection, params, Result, Transaction};
 use crate::domain::map_zoom::MapZoom;
 use crate::domain::map_tile::MapTile;
@@ -55,7 +55,7 @@ impl MapTileTable {
     pub fn upsert(&self, tx: &Transaction, tile: &MapTile, activity_id: u64) -> Result<()> {
         let sql = self.get_sql(UPSERT_TILE);
         let values = params![tile.get_x(), tile.get_y(), activity_id];
-        debug!("Execute\n{}\nwith {}, {}, {}", sql, tile.get_x(), tile.get_y(), activity_id);
+        trace!("Execute\n{}\nwith {}, {}, {}", sql, tile.get_x(), tile.get_y(), activity_id);
         tx.execute(sql.as_str(), values).map(|_| ()) // Ignore returned row count
     }
 

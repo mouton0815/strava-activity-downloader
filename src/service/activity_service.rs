@@ -103,7 +103,10 @@ impl ActivityService {
             let tx = self.connection.transaction()?;
             for zoom in MapZoom::VALUES {
                 let table = &tile_tables[&zoom];
-                for tile in stream.to_tiles(zoom)? {
+                let tiles = stream.to_tiles(zoom)?;
+                // TODO: Count *after* upsert
+                debug!("Save {} tiles with zoom level {} for activity {}", tiles.len(), zoom.value(), activity.id);
+                for tile in tiles {
                     table.upsert(&tx, &tile, activity.id)?;
                 }
             }
