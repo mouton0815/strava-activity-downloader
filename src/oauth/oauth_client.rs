@@ -1,4 +1,3 @@
-use std::error::Error;
 // Send is necessary to send errors between threads (needed by axum middleware):
 // https://users.rust-lang.org/t/axum-middleware-trait-bound-issue-when-invoking-a-function-returning-boxed-error-result/100052/4
 // Sync is necessary for From/Into convenience:
@@ -32,7 +31,7 @@ impl OAuthClient {
                redirect_url: String,
                target_url: String,
                scopes: Vec<String>,
-    ) -> Result<OAuthClient, Box<dyn Error>> {
+    ) -> Result<OAuthClient, BoxError> {
         let client = BasicClient::new(
             ClientId::new(client_id),
             Some(ClientSecret::new(client_secret.to_string())),

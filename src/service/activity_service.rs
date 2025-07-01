@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::error::Error;
 use axum::BoxError;
 use log::{debug, info, warn};
 use rusqlite::Connection;
@@ -20,7 +19,7 @@ pub struct ActivityService {
 }
 
 impl ActivityService {
-    pub fn new(db_path: &str, store_tiles: bool) -> Result<Self, Box<dyn Error>> {
+    pub fn new(db_path: &str, store_tiles: bool) -> Result<Self, BoxError> {
         let connection = Connection::open(db_path)?;
         ActivityTable::create_table(&connection)?;
         let mut tile_tables: Option<TileTableMap> = None;

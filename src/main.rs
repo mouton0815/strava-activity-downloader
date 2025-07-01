@@ -1,5 +1,5 @@
-use std::error::Error;
 use std::time::Duration;
+use axum::BoxError;
 use config::{Config, File};
 use log::info;
 use tokio::join;
@@ -29,7 +29,7 @@ async fn main() -> Result<(), BoxError> {
  */
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>>  {
+async fn main() -> Result<(), BoxError>  {
     env_logger::init();
 
     let config = Config::builder()
