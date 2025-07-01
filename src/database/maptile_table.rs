@@ -17,10 +17,13 @@ const UPSERT_TILE: &'static str =
     "INSERT INTO $table_name (x, y, activity_id, activity_count) \
      VALUES (?, ?, ?, 1) \
      ON CONFLICT(x, y) DO \
-     UPDATE SET activity_count = excluded.activity_count + 1";
+     UPDATE SET activity_count = activity_count + 1";
 
 const SELECT_TILES : &'static str =
     "SELECT x, y, activity_id, activity_count FROM $table_name ORDER BY x, y";
+
+const DELETE_TILES : &'static str =
+    "DELETE FROM $table_name";
 
 #[derive(Debug, PartialEq)]
 pub struct MapTileRow {
@@ -47,8 +50,8 @@ impl MapTileTable {
 
     pub fn create_table(&self, conn: &Connection) -> Result<()> {
         let sql = self.get_sql(CREATE_TILE_TABLE);
-        debug!("Execute\n{}", sql);
-        conn.execute(sql.as_str(), [])?;
+        debug!("Execute\n{sql}");
+        conn.execute(&sql, [])?;
         Ok(())
     }
 
@@ -56,13 +59,13 @@ impl MapTileTable {
         let sql = self.get_sql(UPSERT_TILE);
         let values = params![tile.get_x(), tile.get_y(), activity_id];
         trace!("Execute\n{}\nwith {}, {}, {}", sql, tile.get_x(), tile.get_y(), activity_id);
-        tx.execute(sql.as_str(), values).map(|_| ()) // Ignore returned row count
+        tx.execute(&sql, values).map(|_| ()) // Ignore returned row count
     }
 
     pub fn select_all(&self, tx: &Transaction) -> Result<Vec<MapTileRow>> {
         let sql = self.get_sql(SELECT_TILES);
-        debug!("Execute\n{}", sql);
-        let mut stmt = tx.prepare(sql.as_str())?;
+        debug!("Execute\n{sql}");
+        let mut stmt = tx.prepare(&sql)?;
         let tile_iter = stmt.query_map([], |row| {
             Ok(MapTileRow::new(
                 MapTile::new(row.get(0)?, row.get(1)?),
@@ -77,8 +80,14 @@ impl MapTileTable {
         Ok(tile_vec)
     }
 
+    pub fn delete_all(&self, tx: &Transaction) -> Result<usize> {
+        let sql = self.get_sql(DELETE_TILES);
+        debug!("Execute\n{sql}");
+        tx.execute(&sql, params![])
+    }
+
     fn get_sql(&self, sql: &str) -> String {
-        sql.replace("$table_name", self.table_name.as_str())
+        sql.replace("$table_name", &self.table_name)
     }
 }
 
@@ -93,13 +102,31 @@ mod tests {
 
     #[test]
     fn test_upsert() {
+        let mut conn = create_connection();
+        do_upsert(&mut conn);
+    }
+
+    #[test]
+    fn test_delete() {
+        let mut conn = create_connection();
+        do_upsert(&mut conn);
+
+        // Now delete everything again:
+        let tile_table = MapTileTable::new(MapZoom::Level14);
+        let tx = conn.transaction().unwrap();
+        assert!(tile_table.delete_all(&tx).is_ok());
+        assert!(tx.commit().is_ok());
+
+        check_results(tile_table, &mut conn, &[]);
+    }
+
+    fn do_upsert(conn: &mut Connection) {
         let tile1 = MapTile::new(1, 1);
         let tile2 = MapTile::new(2, 2);
         let tile3 = MapTile::new(1, 1); // Identical to tile1
+        let tile4 = MapTile::new(1, 1); // Ditto
 
         let tile_table = MapTileTable::new(MapZoom::Level14);
-
-        let mut conn = create_connection();
         assert!(ActivityTable::create_table(&conn).is_ok());
         assert!(tile_table.create_table(&conn).is_ok());
 
@@ -109,14 +136,15 @@ mod tests {
 
         assert!(tile_table.upsert(&tx, &tile1, 1).is_ok());
         assert!(tile_table.upsert(&tx, &tile2, 2).is_ok());
-        assert!(tile_table.upsert(&tx, &tile3, 1).is_ok()); // tile3 overwrites tile1
+        assert!(tile_table.upsert(&tx, &tile3, 1).is_ok()); // tile3 is same as tile1
+        assert!(tile_table.upsert(&tx, &tile4, 1).is_ok()); // Ditto
         assert!(tx.commit().is_ok());
 
         let ref_tile_rows = [
-            &MapTileRow { tile: tile1, activity_id: 1, activity_count: 2 },
+            &MapTileRow { tile: tile1, activity_id: 1, activity_count: 3 },
             &MapTileRow { tile: tile2, activity_id: 2, activity_count: 1 }
         ];
-        check_results(tile_table, &mut conn, &ref_tile_rows);
+        check_results(tile_table, conn, &ref_tile_rows);
     }
 
     fn create_connection() -> Connection {

@@ -104,7 +104,6 @@ impl ActivityService {
             for zoom in MapZoom::VALUES {
                 let table = &tile_tables[&zoom];
                 let tiles = stream.to_tiles(zoom)?;
-                // TODO: Count *after* upsert
                 debug!("Save {} tiles with zoom level {} for activity {}", tiles.len(), zoom.value(), activity.id);
                 for tile in tiles {
                     table.upsert(&tx, &tile, activity.id)?;
@@ -115,6 +114,7 @@ impl ActivityService {
         Ok(())
     }
 
+    /// Returns all tiles for the given zoom level
     pub fn get_tiles(&mut self, zoom: MapZoom) -> Result<Vec<MapTileRow>, BoxError> {
         match &self.tile_tables {
             Some(tile_tables) => {
@@ -128,6 +128,24 @@ impl ActivityService {
                 Ok(vec![])
             }
         }
+    }
+
+    /// Deletes **all** tiles for all zoom levels
+    pub fn delete_all_tiles(&mut self) -> Result<(), BoxError> {
+        match &self.tile_tables {
+            Some(tile_tables) => {
+                let tx = self.connection.transaction()?;
+                for zoom in MapZoom::VALUES {
+                    let table = &tile_tables[&zoom];
+                    table.delete_all(&tx)?;
+                }
+                tx.commit()?;
+            },
+            None => {
+                warn!("Tile storage disabled");
+            }
+        }
+        Ok(())
     }
 }
 
