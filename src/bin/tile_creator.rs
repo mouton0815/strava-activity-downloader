@@ -1,27 +1,18 @@
 use std::error::Error;
-use std::fs::File;
-use std::io::BufReader;
-use std::path::Path;
 use axum::BoxError;
-use strava_gpx_downloader::domain::activity_stream::ActivityStream;
 use strava_gpx_downloader::service::activity_service::ActivityService;
-use strava_gpx_downloader::util::gpx_path::gpx_path;
+use strava_gpx_downloader::track::read_track::read_track;
 
 const ACTIVITY_DB: &'static str = "activity.db";
 
 fn exec(mut service: ActivityService) -> Result<(), BoxError> {
-    // Iterate over activities with GPX files by increasing start_date
-    //   Load the corresponding GPX file
-    //   Generate and write the tiles for the corresponding activity ID
+    // Iterate over all activities with tracks by increasing start_date
+    //   Load the corresponding track GPX file
+    //   Generate and write the tiles for the corresponding activity
     let activities = service.get_all_with_gpx()?;
     println!("Have {} activities", activities.len());
     for activity in activities {
-        let data_path = gpx_path(&activity)?;
-        println!("Read GPX from {data_path}");
-        let data_path = Path::new(&data_path);
-        let file = File::open(data_path)?;
-        let reader = BufReader::new(file);
-        let stream = ActivityStream::from_gpx(reader)?;
+        let stream = read_track(&activity)?;
         service.put_tiles(&activity, &stream)?;
     }
     Ok(())
