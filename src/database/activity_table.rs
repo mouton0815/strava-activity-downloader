@@ -3,9 +3,9 @@ use log::debug;
 use rusqlite::{Connection, OptionalExtension, params, Result, Row, Transaction};
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
-use crate::domain::gpx_store_state::GpxStoreState;
+use crate::domain::track_store_state::TrackStoreState;
 
-/// See [GpxStoreState] for the meaning of gpx_fetched values
+/// See [TrackStoreState] for the meaning of gpx_fetched values
 const CREATE_ACTIVITY_TABLE : &'static str =
     "CREATE TABLE IF NOT EXISTS activity (
         id INTEGER NOT NULL PRIMARY KEY,
@@ -40,7 +40,7 @@ const UPSERT_ACTIVITY : &'static str =
 const DELETE_ACTIVITY : &'static str =
     "DELETE FROM activity WHERE id = ?";
 
-const UPDATE_GPX_COLUMN : &'static str =
+const UPDATE_FETCHED_COLUMN: &'static str =
     "UPDATE activity SET gpx_fetched = ? WHERE id = ?";
 
 const SELECT_ACTIVITIES : &'static str =
@@ -49,10 +49,10 @@ const SELECT_ACTIVITIES : &'static str =
 const SELECT_ACTIVITY : &'static str =
     concatcp!(SELECT_ACTIVITIES, " WHERE id = ?");
 
-const SELECT_EARLIEST_ACTIVITY_WITHOUT_GPX : &'static str =
+const SELECT_EARLIEST_ACTIVITY_WITHOUT_TRACK: &'static str =
     concatcp!(SELECT_ACTIVITIES, " WHERE gpx_fetched = 0 and start_date = (SELECT MIN(start_date) from activity WHERE gpx_fetched = 0)");
 
-const SELECT_ACTIVITIES_WITH_GPX : &'static str =
+const SELECT_ACTIVITIES_WITH_TRACK: &'static str =
     concatcp!(SELECT_ACTIVITIES, " WHERE gpx_fetched = 1 ORDER BY start_date ASC");
 
 const SELECT_ACTIVITY_STATS: &'static str =
@@ -86,10 +86,10 @@ impl ActivityTable {
         Ok(row_count == 1)
     }
 
-    pub fn update_gpx_column(tx: &Transaction, id: u64, state: GpxStoreState) -> Result<bool> {
+    pub fn update_fetched_column(tx: &Transaction, id: u64, state: TrackStoreState) -> Result<bool> {
         let value = state as i32;
-        debug!("Execute\n{} with: {} {}", UPDATE_GPX_COLUMN, id, value);
-        let row_count = tx.execute(UPDATE_GPX_COLUMN, params![value, id])?;
+        debug!("Execute\n{} with: {} {}", UPDATE_FETCHED_COLUMN, id, value);
+        let row_count = tx.execute(UPDATE_FETCHED_COLUMN, params![value, id])?;
         Ok(row_count == 1)
     }
 
@@ -110,18 +110,18 @@ impl ActivityTable {
         }).optional()
     }
 
-    pub fn select_all_with_gpx(tx: &Transaction) -> Result<ActivityVec> {
-        debug!("Execute\n{}", SELECT_ACTIVITIES_WITH_GPX);
-        let mut stmt = tx.prepare(SELECT_ACTIVITIES_WITH_GPX)?;
+    pub fn select_all_with_track(tx: &Transaction) -> Result<ActivityVec> {
+        debug!("Execute\n{}", SELECT_ACTIVITIES_WITH_TRACK);
+        let mut stmt = tx.prepare(SELECT_ACTIVITIES_WITH_TRACK)?;
         let activity_iter = stmt.query_map([], |row| {
             Self::row_to_activity(row)
         })?;
         Ok(activity_iter.collect::<Result<_, _>>()?)
     }
 
-    pub fn select_earliest_without_gpx(tx: &Transaction) -> Result<Option<Activity>> {
-        debug!("Execute\n{}", SELECT_EARLIEST_ACTIVITY_WITHOUT_GPX);
-        let mut stmt = tx.prepare(SELECT_EARLIEST_ACTIVITY_WITHOUT_GPX)?;
+    pub fn select_earliest_without_track(tx: &Transaction) -> Result<Option<Activity>> {
+        debug!("Execute\n{}", SELECT_EARLIEST_ACTIVITY_WITHOUT_TRACK);
+        let mut stmt = tx.prepare(SELECT_EARLIEST_ACTIVITY_WITHOUT_TRACK)?;
         stmt.query_row([], |row | {
             Ok(Self::row_to_activity(row)?)
         }).optional()
@@ -183,7 +183,7 @@ mod tests {
     use crate::database::activity_table::ActivityTable;
     use crate::domain::activity::Activity;
     use crate::domain::activity_stats::ActivityStats;
-    use crate::domain::gpx_store_state::GpxStoreState;
+    use crate::domain::track_store_state::TrackStoreState;
 
     #[test]
     fn test_insert() {
@@ -249,28 +249,28 @@ mod tests {
     }
 
     #[test]
-    fn test_update_gpx_column() {
+    fn test_update_fetched_column() {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
         assert!(ActivityTable::insert(&tx, &Activity::dummy(1, "foo")).is_ok());
-        let result = ActivityTable::update_gpx_column(&tx, 1, GpxStoreState::Stored);
+        let result = ActivityTable::update_fetched_column(&tx, 1, TrackStoreState::Stored);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), true);
         assert!(tx.commit().is_ok());
     }
 
     #[test]
-    fn test_update_gpx_column_missing() {
+    fn test_update_fetched_column_missing() {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
-        let result = ActivityTable::update_gpx_column(&tx, 1, GpxStoreState::Stored);
+        let result = ActivityTable::update_fetched_column(&tx, 1, TrackStoreState::Stored);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false);
         assert!(tx.commit().is_ok());
     }
 
     #[test]
-    fn test_earliest_without_gpx() {
+    fn test_earliest_without_track() {
         let activity1 = Activity::dummy(1, "2018-02-20T18:02:13Z");
         let activity2 = Activity::dummy(2, "2018-02-20T18:02:12Z");
         let activity3 = Activity::dummy(3, "2018-02-20T18:02:11Z");
@@ -280,28 +280,28 @@ mod tests {
         ActivityTable::upsert(&tx, &activity1).unwrap();
         ActivityTable::upsert(&tx, &activity2).unwrap();
         ActivityTable::upsert(&tx, &activity3).unwrap();
-        ActivityTable::update_gpx_column(&tx, 3, GpxStoreState::Stored).unwrap(); // Earliest activity already has a GPX track
-        ActivityTable::update_gpx_column(&tx, 2, GpxStoreState::Missing).unwrap(); // Same for missing track
+        ActivityTable::update_fetched_column(&tx, 3, TrackStoreState::Stored).unwrap(); // Earliest activity already has a track
+        ActivityTable::update_fetched_column(&tx, 2, TrackStoreState::Missing).unwrap(); // Same for missing track
 
-        let result = ActivityTable::select_earliest_without_gpx(&tx);
+        let result = ActivityTable::select_earliest_without_track(&tx);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(activity1));
         assert!(tx.commit().is_ok());
     }
 
     #[test]
-    fn test_earliest_without_gpx_missing() {
+    fn test_earliest_without_track_missing() {
         let mut conn = create_connection_and_table();
         let tx = conn.transaction().unwrap();
 
-        let result = ActivityTable::select_earliest_without_gpx(&tx);
+        let result = ActivityTable::select_earliest_without_track(&tx);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), None);
         assert!(tx.commit().is_ok());
     }
 
     #[test]
-    fn test_all_with_gpx() {
+    fn test_all_with_track() {
         // Note: Inverse timely order:
         let activity1 = Activity::dummy(3, "2018-02-20T18:02:15Z");
         let activity2 = Activity::dummy(5, "2018-02-20T18:02:13Z");
@@ -312,10 +312,10 @@ mod tests {
         ActivityTable::upsert(&tx, &activity1).unwrap();
         ActivityTable::upsert(&tx, &activity2).unwrap();
         ActivityTable::upsert(&tx, &activity3).unwrap();
-        ActivityTable::update_gpx_column(&tx, 3, GpxStoreState::Stored).unwrap();
-        ActivityTable::update_gpx_column(&tx, 7, GpxStoreState::Stored).unwrap();
+        ActivityTable::update_fetched_column(&tx, 3, TrackStoreState::Stored).unwrap();
+        ActivityTable::update_fetched_column(&tx, 7, TrackStoreState::Stored).unwrap();
 
-        let result = ActivityTable::select_all_with_gpx(&tx);
+        let result = ActivityTable::select_all_with_track(&tx);
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), vec![activity3, activity1]);
         assert!(tx.commit().is_ok());
@@ -329,7 +329,7 @@ mod tests {
         ActivityTable::upsert(&tx, &Activity::dummy(3, "2018-02-20T18:02:15Z")).unwrap();
         ActivityTable::upsert(&tx, &Activity::dummy(2, "2018-02-20T18:02:12Z")).unwrap();
         ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:11Z")).unwrap(); // Note: ID overwrite
-        ActivityTable::update_gpx_column(&tx, 1, GpxStoreState::Stored).unwrap();
+        ActivityTable::update_fetched_column(&tx, 1, TrackStoreState::Stored).unwrap();
 
         let result = ActivityTable::select_stats(&tx);
         assert!(result.is_ok());

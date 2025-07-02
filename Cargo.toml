@@ -1,8 +1,8 @@
 [package]
-name = "strava-gpx-downloader"
+name = "strava_activity_downloader"
 version = "0.1.0"
 edition = "2021"
-default-run = "strava-gpx-downloader"
+default-run = "strava_activity_downloader"
 
 [dependencies]
 anyhow = "1.0.75"

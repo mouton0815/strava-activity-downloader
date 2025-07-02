@@ -4,14 +4,14 @@ use config::{Config, File};
 use log::info;
 use tokio::join;
 use tokio::sync::broadcast;
-use strava_gpx_downloader::domain::server_status::ServerStatus;
-use strava_gpx_downloader::downloader::spawn_download_scheduler;
-use strava_gpx_downloader::oauth::oauth_client::OAuthClient;
-use strava_gpx_downloader::rest::http_server::spawn_http_server;
-use strava_gpx_downloader::rest::rest_paths::{AUTH_CALLBACK, STATUS};
-use strava_gpx_downloader::service::activity_service::ActivityService;
-use strava_gpx_downloader::state::shared_state::SharedState;
-use strava_gpx_downloader::util::shutdown_signal::shutdown_signal;
+use strava_activity_downloader::domain::server_status::ServerStatus;
+use strava_activity_downloader::downloader::spawn_download_scheduler;
+use strava_activity_downloader::oauth::oauth_client::OAuthClient;
+use strava_activity_downloader::rest::http_server::spawn_http_server;
+use strava_activity_downloader::rest::rest_paths::{AUTH_CALLBACK, STATUS};
+use strava_activity_downloader::service::activity_service::ActivityService;
+use strava_activity_downloader::state::shared_state::SharedState;
+use strava_activity_downloader::util::shutdown_signal::shutdown_signal;
 
 const CONFIG_YAML : &'static str = "conf/application.yaml";
 const ACTIVITY_DB: &'static str = "activity.db";
@@ -24,7 +24,7 @@ async fn main() -> Result<(), BoxError> {
     let reader = BufReader::new(in_file);
     let stream: ActivityStream = serde_json::from_reader(reader)?;
     let activity = Activity::new(12345, "2024-01-01T00:00:00Z");
-    write_gpx(12345, "Foo", "2024-01-01T00:00:00Z", &stream)
+    write_track(12345, "Foo", "2024-01-01T00:00:00Z", &stream)
 }
  */
 

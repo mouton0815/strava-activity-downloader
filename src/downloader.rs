@@ -9,7 +9,7 @@ use crate::domain::activity_stats::ActivityStats;
 use crate::domain::activity_stream::ActivityStream;
 use crate::domain::download_delay::DownloadDelay;
 use crate::domain::download_state::DownloadState;
-use crate::domain::gpx_store_state::GpxStoreState;
+use crate::domain::track_store_state::TrackStoreState;
 use crate::oauth::token::Bearer;
 use crate::state::shared_state::MutexSharedState;
 
@@ -51,21 +51,21 @@ async fn send_status_event(state: &MutexSharedState) -> Result<(), BoxError> {
     Ok(())
 }
 
-async fn get_earliest_activity_without_gpx(state: &MutexSharedState) -> Result<Option<Activity>, BoxError> {
+async fn get_earliest_activity_without_track(state: &MutexSharedState) -> Result<Option<Activity>, BoxError> {
     let mut guard = state.lock().await;
-    (*guard).service.get_earliest_without_gpx()
+    (*guard).service.get_earliest_without_track()
 }
 
-async fn store_gpx(state: &MutexSharedState, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
+async fn store_track(state: &MutexSharedState, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    (*guard).service.store_gpx(activity, stream)?;
+    (*guard).service.store_track(activity, stream)?;
     (*guard).merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
     Ok(())
 }
 
-async fn mark_gpx(state: &MutexSharedState, activity: &Activity) -> Result<(), BoxError> {
+async fn mark_fetched(state: &MutexSharedState, activity: &Activity) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    (*guard).service.mark_gpx(activity, GpxStoreState::Missing)?;
+    (*guard).service.mark_fetched(activity, TrackStoreState::Missing)?;
     (*guard).merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
     Ok(())
 }
@@ -103,9 +103,9 @@ async fn activity_task(state: &MutexSharedState, strava_url: &str, bearer: Strin
     Ok(DownloadState::Activities)
 }
 
-/// Downloads an activity stream from Strava, transforms it to GPX, and stores it as file
+/// Downloads an activity stream from Strava, transforms it to a GPX track, and stores it as file
 async fn stream_task(state: &MutexSharedState, strava_url: &str, bearer: String) -> TaskResult {
-    match get_earliest_activity_without_gpx(state).await? {
+    match get_earliest_activity_without_track(state).await? {
         Some(activity) => {
             let url = format!("{strava_url}/activities/{}/streams?keys=time,latlng,altitude&key_by_type=true", activity.id);
             let response = reqwest::Client::new()
@@ -117,7 +117,7 @@ async fn stream_task(state: &MutexSharedState, strava_url: &str, bearer: String)
             if let Err(error) = response.as_ref() {
                 if error.status() == Some(reqwest::StatusCode::NOT_FOUND) {
                     warn!("Activity {} has no track", activity.id);
-                    mark_gpx(state, &activity).await?;
+                    mark_fetched(state, &activity).await?;
                     return Ok(DownloadState::Tracks) // Downloading continues
                 }
                 if error.status() == Some(reqwest::StatusCode::TOO_MANY_REQUESTS) {
@@ -131,19 +131,19 @@ async fn stream_task(state: &MutexSharedState, strava_url: &str, bearer: String)
             match response?.json::<ActivityStream>().await {
                 Ok(stream) => {
                     // info!("{:?}", stream);
-                    store_gpx(state, &activity, &stream).await?;
+                    store_track(state, &activity, &stream).await?;
                     Ok(DownloadState::Tracks)
                 }
                 Err(error) => {
                     // A known case is that the activity stream does not contain a "latlon" array
                     warn!("Failed to parse the track of activity {}: {}", activity.id, error);
-                    mark_gpx(state, &activity).await?;
+                    mark_fetched(state, &activity).await?;
                     Ok(DownloadState::Tracks) // Downloading continues
                 }
             }
         }
         None => {
-            info!("No further activities without GPX, stop downloading (can be re-enabled)");
+            info!("No further activities without track, stop downloading (can be re-enabled)");
             Ok(DownloadState::NoResults)
         }
     }

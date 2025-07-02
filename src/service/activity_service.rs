@@ -7,7 +7,7 @@ use crate::database::maptile_table::{MapTileRow, MapTileTable};
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
 use crate::domain::activity_stream::ActivityStream;
-use crate::domain::gpx_store_state::GpxStoreState;
+use crate::domain::track_store_state::TrackStoreState;
 use crate::domain::map_zoom::MapZoom;
 use crate::track::write_track::write_track;
 
@@ -64,35 +64,35 @@ impl ActivityService {
         Ok(stats)
     }
 
-    pub fn get_earliest_without_gpx(&mut self) -> Result<Option<Activity>, BoxError> {
+    pub fn get_earliest_without_track(&mut self) -> Result<Option<Activity>, BoxError> {
         let tx = self.connection.transaction()?;
-        let activity = ActivityTable::select_earliest_without_gpx(&tx)?;
+        let activity = ActivityTable::select_earliest_without_track(&tx)?;
         tx.commit()?;
-        debug!("Earliest activity without GPX: {:?}", activity);
+        debug!("Earliest activity without track: {:?}", activity);
         Ok(activity)
     }
 
-    pub fn get_all_with_gpx(&mut self) -> Result<ActivityVec, BoxError> {
+    pub fn get_all_with_track(&mut self) -> Result<ActivityVec, BoxError> {
         let tx = self.connection.transaction()?;
-        let activities = ActivityTable::select_all_with_gpx(&tx)?;
+        let activities = ActivityTable::select_all_with_track(&tx)?;
         tx.commit()?;
-        debug!("Number of activities with GPX: {:?}", activities.len());
+        debug!("Number of activities with track: {:?}", activities.len());
         Ok(activities)
     }
 
-    pub fn store_gpx(&mut self, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
+    pub fn store_track(&mut self, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
         // Store GPX file ...
         write_track(activity, stream)?;
         // ... then mark the corresponding activity
-        self.mark_gpx(activity, GpxStoreState::Stored)?;
+        self.mark_fetched(activity, TrackStoreState::Stored)?;
         // ... finally compute the tiles and store them
         self.put_tiles(activity, stream)?;
         Ok(())
     }
 
-    pub fn mark_gpx(&mut self, activity: &Activity, state: GpxStoreState) -> Result<(), BoxError> {
+    pub fn mark_fetched(&mut self, activity: &Activity, state: TrackStoreState) -> Result<(), BoxError> {
         let tx = self.connection.transaction()?;
-        let result = ActivityTable::update_gpx_column(&tx, activity.id, state)?;
+        let result = ActivityTable::update_fetched_column(&tx, activity.id, state)?;
         debug!("Marked 'GPX fetched' for activity {} with result {result}", activity.id);
         tx.commit()?;
         Ok(())
