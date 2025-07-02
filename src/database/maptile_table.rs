@@ -3,7 +3,7 @@ use rusqlite::{Connection, params, Result, Transaction};
 use crate::domain::map_zoom::MapZoom;
 use crate::domain::map_tile::MapTile;
 
-const CREATE_TILE_TABLE : &'static str =
+const CREATE_TILE_TABLE : &str =
     "CREATE TABLE IF NOT EXISTS $table_name (
         x INTEGER NOT NULL,
         y INTEGER NOT NULL,
@@ -13,16 +13,16 @@ const CREATE_TILE_TABLE : &'static str =
         FOREIGN KEY(activity_id) REFERENCES activity(id)
     )";
 
-const UPSERT_TILE: &'static str =
+const UPSERT_TILE: &str =
     "INSERT INTO $table_name (x, y, activity_id, activity_count) \
      VALUES (?, ?, ?, 1) \
      ON CONFLICT(x, y) DO \
      UPDATE SET activity_count = activity_count + 1";
 
-const SELECT_TILES : &'static str =
+const SELECT_TILES : &str =
     "SELECT x, y, activity_id, activity_count FROM $table_name ORDER BY x, y";
 
-const DELETE_TILES : &'static str =
+const DELETE_TILES : &str =
     "DELETE FROM $table_name";
 
 #[derive(Debug, PartialEq)]

@@ -13,8 +13,8 @@ use strava_activity_downloader::service::activity_service::ActivityService;
 use strava_activity_downloader::state::shared_state::SharedState;
 use strava_activity_downloader::util::shutdown_signal::shutdown_signal;
 
-const CONFIG_YAML : &'static str = "conf/application.yaml";
-const ACTIVITY_DB: &'static str = "activity.db";
+const CONFIG_YAML : &str = "conf/application.yaml";
+const ACTIVITY_DB: &str = "activity.db";
 
 /*
 #[tokio::main]

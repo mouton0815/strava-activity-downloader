@@ -62,7 +62,7 @@ impl OAuthClient {
         let scopes : Vec<Scope> = self.scopes.iter().map(|s| Scope::new(s.clone())).collect();
         let (auth_url, csrf_token) = self.client
             .authorize_url(CsrfToken::new_random)
-            .add_scopes(scopes.into_iter())
+            .add_scopes(scopes)
             .url();
         self.state = Some(csrf_token.secret().clone());
         auth_url
@@ -131,7 +131,7 @@ impl OAuthClient {
     async fn refresh_token(&self, token_holder: &TokenHolder) -> TokenResult {
         debug!("Access token expired, refreshing ...");
         let token = token::validate(self.client
-            .exchange_refresh_token(&token_holder.token().refresh_token().unwrap())
+            .exchange_refresh_token(token_holder.token().refresh_token().unwrap())
             .request_async(request_wrapper)
             .await?)?;
 

@@ -17,7 +17,7 @@ fn reqwest_error(error: reqwest::Error) -> StatusCode {
     warn!("{}", error);
     // Need to map reqwest::StatusCode to axum::http::StatusCode.
     // Note that both types are actually aliases of http::StatusCode, but Rust complains.
-    let status = error.status().map(|e| e.as_u16()).unwrap_or(500 as u16);
+    let status = error.status().map(|e| e.as_u16()).unwrap_or(500_u16);
     StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
@@ -30,10 +30,10 @@ fn map_box_error(error: BoxError) -> StatusCode {
 pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Json<DownloadState>, StatusCode> {
     debug!("Enter {}", TOGGLE);
     let mut guard = state.lock().await;
-    match (*guard).oauth.get_bearer().await.map_err(map_box_error)? {
+    match guard.oauth.get_bearer().await.map_err(map_box_error)? {
         Some(_) => {
-            (*guard).download_state = (*guard).download_state.toggle();
-            Ok(Json((*guard).download_state.clone()))
+            guard.download_state = guard.download_state.toggle();
+            Ok(Json(guard.download_state.clone()))
         },
         None => {
             info!("Unauthorized, cannot enable the download scheduler");
@@ -47,7 +47,7 @@ pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Json<Downlo
 pub async fn status(State(state): State<MutexSharedState>) -> Result<Json<ServerStatus>, StatusCode> {
     debug!("Enter {}", STATUS);
     let mut guard = state.lock().await;
-    let status = (*guard).get_server_status().await.map_err(service_error)?;
+    let status = guard.get_server_status().await.map_err(service_error)?;
     Ok(Json(status))
 }
 */
@@ -76,13 +76,13 @@ pub async fn status(State(state): State<MutexSharedState>)
 
 async fn subscribe_and_send_first(state: &MutexSharedState) -> Result<Receiver<ServerStatus>, BoxError> {
     let mut guard = state.lock().await;
-    let receiver = (*guard).tx_data.subscribe();
-    let status = (*guard).get_server_status().await?;
-    (*guard).tx_data.send(status)?;
+    let receiver = guard.tx_data.subscribe();
+    let status = guard.get_server_status().await?;
+    guard.tx_data.send(status)?;
     Ok(receiver)
 }
 
 async fn subscribe_term(state: &MutexSharedState) -> Receiver<()> {
     let guard = state.lock().await;
-    (*guard).tx_term.subscribe()
+    guard.tx_term.subscribe()
 }

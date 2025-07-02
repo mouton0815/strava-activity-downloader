@@ -11,7 +11,7 @@ pub struct Bearer(String);
 
 impl From<String> for Bearer {
     fn from(item: String) -> Self {
-        Self { 0: item }
+        Self(item)
     }
 }
 
@@ -43,7 +43,7 @@ impl TokenHolder {
 }
 
 pub fn is_expired(token_holder: &TokenHolder) -> bool {
-    token_holder.expiry.map_or(false, |e| e - EXPIRY_LEEWAY < get_current_time())
+    token_holder.expiry.is_some_and(|e| e - EXPIRY_LEEWAY < get_current_time())
 }
 
 fn get_current_time() -> u64 {

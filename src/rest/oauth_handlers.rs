@@ -14,7 +14,7 @@ pub struct CallbackQuery {
 
 pub async fn authorize(State(state): State<MutexSharedState>) -> Result<Response, StatusCode> {
     let mut guard = state.lock().await;
-    match (*guard).oauth.get_bearer().await {
+    match guard.oauth.get_bearer().await {
         Ok(bearer) => {
             match bearer {
                 Some(_) => {
@@ -22,7 +22,7 @@ pub async fn authorize(State(state): State<MutexSharedState>) -> Result<Response
                 }
                 None => {
                     info!("No token, redirect to authorization endpoint");
-                    let url = (*guard).oauth.authorize_auth_code_grant();
+                    let url = guard.oauth.authorize_auth_code_grant();
                     debug!("Redirect to {}", url);
                     Ok(Redirect::temporary(url.as_str()).into_response())
                 }
@@ -39,7 +39,7 @@ pub async fn authorize(State(state): State<MutexSharedState>) -> Result<Response
 pub async fn callback(State(state): State<MutexSharedState>, query: Query<CallbackQuery>) -> Result<Redirect, StatusCode> {
     debug!("Authorized with code {}", query.code);
     let mut guard = state.lock().await;
-    match (*guard).oauth.callback_auth_code_grant(&query.code, &query.state).await {
+    match guard.oauth.callback_auth_code_grant(&query.code, &query.state).await {
         Ok(uri) => {
             debug!("Redirect to origin URL: {}", uri);
             Ok(Redirect::temporary(uri.to_string().as_str()))

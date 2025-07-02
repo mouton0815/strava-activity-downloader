@@ -146,7 +146,7 @@ impl ActivityStream {
     pub fn to_tiles(&self, zoom: MapZoom) -> Result<Vec<MapTile>, BoxError> {
         let coords: &Vec<(f64, f64)> = self.latlng.data.as_ref();
         let tiles = coords
-            .into_iter()
+            .iter()
             .map(|(lat, lon)| MapTile::from_coords(*lat, *lon, zoom))
             .collect::<BTreeSet<_>>()// Collect into set to remove duplicates
             .into_iter()

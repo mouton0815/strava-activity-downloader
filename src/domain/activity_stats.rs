@@ -20,10 +20,10 @@ impl ActivityStats {
     }
 
     pub fn merge(&mut self, stats: &ActivityStats) {
-        self.act_count += stats.act_count.clone();
+        self.act_count += stats.act_count;
         self.act_min_time = ActivityStats::min(&self.act_min_time, &stats.act_min_time);
         self.act_max_time = ActivityStats::max(&self.act_max_time, &stats.act_max_time);
-        self.trk_count += stats.trk_count.clone();
+        self.trk_count += stats.trk_count;
         self.trk_max_time = ActivityStats::max(&self.trk_max_time, &stats.trk_max_time);
     }
 

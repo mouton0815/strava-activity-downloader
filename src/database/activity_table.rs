@@ -6,7 +6,7 @@ use crate::domain::activity_stats::ActivityStats;
 use crate::domain::track_store_state::TrackStoreState;
 
 /// See [TrackStoreState] for the meaning of gpx_fetched values
-const CREATE_ACTIVITY_TABLE : &'static str =
+const CREATE_ACTIVITY_TABLE : &str =
     "CREATE TABLE IF NOT EXISTS activity (
         id INTEGER NOT NULL PRIMARY KEY,
         name TEXT NOT NULL,
@@ -20,11 +20,11 @@ const CREATE_ACTIVITY_TABLE : &'static str =
         gpx_fetched INTEGER DEFAULT 0 NOT NULL CHECK (gpx_fetched IN (0, 1, 2))
     )";
 
-const INSERT_ACTIVITY : &'static str =
+const INSERT_ACTIVITY : &str =
     "INSERT INTO activity (id, name, sport_type, start_date, distance, moving_time, total_elevation_gain, average_speed, kudos_count) \
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
 
-const UPSERT_ACTIVITY : &'static str =
+const UPSERT_ACTIVITY : &str =
     concatcp!(INSERT_ACTIVITY, " \
      ON CONFLICT(id) DO \
      UPDATE SET \
@@ -37,28 +37,28 @@ const UPSERT_ACTIVITY : &'static str =
        average_speed = excluded.average_speed, \
        kudos_count = excluded.kudos_count"); // Do NOT update column gpx_fetched
 
-const DELETE_ACTIVITY : &'static str =
+const DELETE_ACTIVITY : &str =
     "DELETE FROM activity WHERE id = ?";
 
-const UPDATE_FETCHED_COLUMN: &'static str =
+const UPDATE_FETCHED_COLUMN: &str =
     "UPDATE activity SET gpx_fetched = ? WHERE id = ?";
 
-const SELECT_ACTIVITIES : &'static str =
+const SELECT_ACTIVITIES : &str =
     "SELECT id, name, sport_type, start_date, distance, moving_time, total_elevation_gain, average_speed, kudos_count FROM activity";
 
-const SELECT_ACTIVITY : &'static str =
+const SELECT_ACTIVITY : &str =
     concatcp!(SELECT_ACTIVITIES, " WHERE id = ?");
 
-const SELECT_EARLIEST_ACTIVITY_WITHOUT_TRACK: &'static str =
+const SELECT_EARLIEST_ACTIVITY_WITHOUT_TRACK: &str =
     concatcp!(SELECT_ACTIVITIES, " WHERE gpx_fetched = 0 and start_date = (SELECT MIN(start_date) from activity WHERE gpx_fetched = 0)");
 
-const SELECT_ACTIVITIES_WITH_TRACK: &'static str =
+const SELECT_ACTIVITIES_WITH_TRACK: &str =
     concatcp!(SELECT_ACTIVITIES, " WHERE gpx_fetched = 1 ORDER BY start_date ASC");
 
-const SELECT_ACTIVITY_STATS: &'static str =
+const SELECT_ACTIVITY_STATS: &str =
     "SELECT COUNT(id), MIN(start_date), MAX(start_date) FROM activity";
 
-const SELECT_TRACK_STATS: &'static str =
+const SELECT_TRACK_STATS: &str =
     "SELECT COUNT(id), MAX(start_date) FROM activity where gpx_fetched = 1";
 
 
@@ -99,14 +99,14 @@ impl ActivityTable {
         let activity_iter = stmt.query_map([], |row| {
             Self::row_to_activity(row)
         })?;
-        Ok(activity_iter.collect::<Result<_, _>>()?)
+        activity_iter.collect::<Result<_, _>>()
     }
 
     pub fn select_by_id(tx: &Transaction, id: u64) -> Result<Option<Activity>> {
         debug!("Execute\n{} with: {}", SELECT_ACTIVITY, id);
         let mut stmt = tx.prepare(SELECT_ACTIVITY)?;
         stmt.query_row([id], |row | {
-            Ok(Self::row_to_activity(row)?)
+            Self::row_to_activity(row)
         }).optional()
     }
 
@@ -116,14 +116,14 @@ impl ActivityTable {
         let activity_iter = stmt.query_map([], |row| {
             Self::row_to_activity(row)
         })?;
-        Ok(activity_iter.collect::<Result<_, _>>()?)
+        activity_iter.collect::<Result<_, _>>()
     }
 
     pub fn select_earliest_without_track(tx: &Transaction) -> Result<Option<Activity>> {
         debug!("Execute\n{}", SELECT_EARLIEST_ACTIVITY_WITHOUT_TRACK);
         let mut stmt = tx.prepare(SELECT_EARLIEST_ACTIVITY_WITHOUT_TRACK)?;
         stmt.query_row([], |row | {
-            Ok(Self::row_to_activity(row)?)
+            Self::row_to_activity(row)
         }).optional()
     }
 
@@ -151,9 +151,9 @@ impl ActivityTable {
         // Because sqlite does not support DECIMAL and stores FLOATs with many digits after the
         // dot (https://www.sqlite.org/floatingpoint.html), we need to convert the numbers to int.
         // The inverse operations are done by row_to_activity() below.
-        let dist_multiplied = (activity.distance.clone() * 10.0) as u64;
-        let speed_multiplied = (activity.average_speed.clone() * 1000.0) as u64;
-        let elev_multiplied = (activity.total_elevation_gain.clone() * 10.0) as u64;
+        let dist_multiplied = (activity.distance * 10.0) as u64;
+        let speed_multiplied = (activity.average_speed * 1000.0) as u64;
+        let elev_multiplied = (activity.total_elevation_gain * 10.0) as u64;
         let values = params![
             activity.id, activity.name, activity.sport_type, activity.start_date, dist_multiplied,
             activity.moving_time, elev_multiplied, speed_multiplied, activity.kudos_count
@@ -378,7 +378,7 @@ mod tests {
     fn check_single_result(conn: &mut Connection, ref_activity: &Activity) {
         let tx = conn.transaction().unwrap();
 
-        let activity = ActivityTable::select_by_id(&tx, ref_activity.id.clone());
+        let activity = ActivityTable::select_by_id(&tx, ref_activity.id);
         assert!(activity.is_ok());
         assert!(tx.commit().is_ok());
 

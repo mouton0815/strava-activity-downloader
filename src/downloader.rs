@@ -15,58 +15,58 @@ use crate::state::shared_state::MutexSharedState;
 
 async fn get_download_state(state: &MutexSharedState) -> DownloadState {
     let guard = state.lock().await;
-    (*guard).download_state.clone()
+    guard.download_state.clone()
 }
 
 async fn set_download_state(state: &MutexSharedState, download_state: DownloadState) {
     let mut guard = state.lock().await;
-    (*guard).download_state = download_state;
+    guard.download_state = download_state;
 }
 
 async fn get_bearer(state: &MutexSharedState) -> Result<Option<Bearer>, BoxError> {
     let mut guard = state.lock().await;
-    (*guard).oauth.get_bearer().await
+    guard.oauth.get_bearer().await
 }
 
 async fn get_query_params(state: &MutexSharedState) -> Result<(i64, i64), BoxError> {
     let mut guard = state.lock().await;
-    let max_time = (*guard).get_activity_max_time().await?;
-    let per_page = (*guard).activities_per_page.clone() as i64;
+    let max_time = guard.get_activity_max_time().await?;
+    let per_page = guard.activities_per_page as i64;
     Ok((max_time, per_page))
 }
 
 async fn add_activities(state: &MutexSharedState, activities: &ActivityVec) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    let activity_stats = (*guard).service.add(activities)?;
-    (*guard).merge_activity_stats(&activity_stats);
+    let activity_stats = guard.service.add(activities)?;
+    guard.merge_activity_stats(&activity_stats);
     Ok(())
 }
 
 async fn send_status_event(state: &MutexSharedState) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    if (*guard).tx_data.receiver_count() > 0 {
-        let status = (*guard).get_server_status().await?;
-        (*guard).tx_data.send(status)?;
+    if guard.tx_data.receiver_count() > 0 {
+        let status = guard.get_server_status().await?;
+        guard.tx_data.send(status)?;
     }
     Ok(())
 }
 
 async fn get_earliest_activity_without_track(state: &MutexSharedState) -> Result<Option<Activity>, BoxError> {
     let mut guard = state.lock().await;
-    (*guard).service.get_earliest_without_track()
+    guard.service.get_earliest_without_track()
 }
 
 async fn store_track(state: &MutexSharedState, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    (*guard).service.store_track(activity, stream)?;
-    (*guard).merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
+    guard.service.store_track(activity, stream)?;
+    guard.merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
     Ok(())
 }
 
 async fn mark_fetched(state: &MutexSharedState, activity: &Activity) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    (*guard).service.mark_fetched(activity, TrackStoreState::Missing)?;
-    (*guard).merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
+    guard.service.mark_fetched(activity, TrackStoreState::Missing)?;
+    guard.merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
     Ok(())
 }
 
@@ -94,12 +94,12 @@ async fn activity_task(state: &MutexSharedState, strava_url: &str, bearer: Strin
     }
 
     let activities= response?.json::<ActivityVec>().await?;
-    if activities.len() == 0 {
+    if activities.is_empty() {
         info!("No further activities, start downloading activity streams from oldest to youngest");
         return Ok(DownloadState::Tracks)
     }
 
-    add_activities(&state, &activities).await?;
+    add_activities(state, &activities).await?;
     Ok(DownloadState::Activities)
 }
 
@@ -153,7 +153,7 @@ async fn try_task(state: &MutexSharedState, strava_url: &str) -> Result<Download
     let mut new_delay = DownloadDelay::Short;
     let download_state = get_download_state(state).await;
     if download_state.is_active() {
-        match get_bearer(&state).await? {
+        match get_bearer(state).await? {
             Some(bearer) => {
                 let new_state= match download_state {
                     DownloadState::Activities => activity_task(state, strava_url, bearer.into()).await?,

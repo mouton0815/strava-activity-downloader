@@ -26,7 +26,7 @@ impl ActivityService {
         if store_tiles {
             let mut tables: TileTableMap = HashMap::new();
             for zoom in MapZoom::VALUES {
-                let table = MapTileTable::new(zoom.clone());
+                let table = MapTileTable::new(zoom);
                 table.create_table(&connection)?;
                 tables.insert(zoom, table);
             }

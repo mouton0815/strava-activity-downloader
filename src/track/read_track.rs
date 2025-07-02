@@ -8,7 +8,7 @@ use crate::domain::activity_stream::ActivityStream;
 use crate::track::track_path::track_path;
 
 pub fn read_track(activity: &Activity) -> Result<ActivityStream, BoxError> {
-    let path = track_path(&activity)?;
+    let path = track_path(activity)?;
     info!("Read track from {path}");
     let path = Path::new(&path);
     let file = File::open(path)?;

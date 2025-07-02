@@ -2,7 +2,7 @@ use axum::BoxError;
 use strava_activity_downloader::service::activity_service::ActivityService;
 use strava_activity_downloader::track::read_track::read_track;
 
-const ACTIVITY_DB: &'static str = "activity.db";
+const ACTIVITY_DB: &str = "activity.db";
 
 fn main() -> Result<(), BoxError> {
     env_logger::init();
