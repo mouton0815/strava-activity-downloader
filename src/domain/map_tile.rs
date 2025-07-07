@@ -1,8 +1,9 @@
 use std::f64::consts::PI;
+use serde::Serialize;
 use crate::domain::map_zoom::MapZoom;
 
 /// Represents a slippy map tile (see https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames)
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 pub struct MapTile {
     x: u64,
     y: u64

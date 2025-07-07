@@ -3,10 +3,11 @@ use axum::BoxError;
 use log::{debug, info, warn};
 use rusqlite::Connection;
 use crate::database::activity_table::ActivityTable;
-use crate::database::maptile_table::{MapTileRow, MapTileTable};
+use crate::database::maptile_table::MapTileTable;
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
 use crate::domain::activity_stream::ActivityStream;
+use crate::domain::map_tile::MapTile;
 use crate::domain::track_store_state::TrackStoreState;
 use crate::domain::map_zoom::MapZoom;
 use crate::track::write_track::write_track;
@@ -115,11 +116,15 @@ impl ActivityService {
     }
 
     /// Returns all tiles for the given zoom level
-    pub fn get_tiles(&mut self, zoom: MapZoom) -> Result<Vec<MapTileRow>, BoxError> {
+    pub fn get_tiles(&mut self, zoom: MapZoom) -> Result<Vec<MapTile>, BoxError> {
         match &self.tile_tables {
             Some(tile_tables) => {
                 let tx = self.connection.transaction()?;
-                let results = tile_tables[&zoom].select_all(&tx)?;
+                let results = tile_tables[&zoom]
+                    .select_all(&tx)?
+                    .iter()
+                    .map(|t| t.get_tile().clone())
+                    .collect();
                 tx.commit()?;
                 Ok(results)
             },

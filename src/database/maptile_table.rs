@@ -36,6 +36,10 @@ impl MapTileRow {
     pub fn new(tile: MapTile, activity_id: i64, activity_count: u32) -> Self {
         Self { tile, activity_id, activity_count }
     }
+
+    pub fn get_tile(&self) -> &MapTile {
+        &self.tile
+    }
 }
 
 pub struct MapTileTable {
