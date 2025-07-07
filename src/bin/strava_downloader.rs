@@ -37,7 +37,7 @@ async fn main() -> Result<(), BoxError>  {
         .build()?;
 
     let host = config.get_string("server.host").unwrap_or("localhost".to_string());
-    let port = config.get_int("server.port").unwrap_or(3000) as u16;
+    let port = config.get_int("server.port").unwrap_or(2525) as u16;
 
     let strava_url = config.get_string("strava.api_url").unwrap_or("https://www.strava.com/api/v3".to_string());
     let request_period = config.get_int("strava.request_period").unwrap_or(10) as u64;

@@ -2,7 +2,7 @@
 name = "strava_activity_downloader"
 version = "0.1.0"
 edition = "2021"
-default-run = "strava_activity_downloader"
+default-run = "strava_downloader"
 
 [dependencies]
 anyhow = "1.0.75"
