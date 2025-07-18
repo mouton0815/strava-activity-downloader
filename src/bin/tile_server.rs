@@ -5,7 +5,7 @@ use axum::routing::get;
 use axum::extract::State;
 use axum_macros::debug_handler;
 use config::{Config, File};
-use log::{debug, warn};
+use log::{debug, info, warn};
 use tokio::sync::Mutex;
 use strava_activity_downloader::domain::map_tile::MapTile;
 use strava_activity_downloader::domain::map_zoom::MapZoom;
@@ -38,6 +38,7 @@ async fn main() -> Result<(), BoxError> {
     let port = config.get_int("server.port").unwrap_or(3000) as u16;
     let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
 
+    info!("Tile server running at http://{host}:{port}{TILES}");
     Ok(axum::serve(listener, router).await?)
 }
 
