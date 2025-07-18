@@ -4,14 +4,11 @@ use crate::domain::map_zoom::MapZoom;
 
 /// Represents a slippy map tile (see https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames)
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
-pub struct MapTile {
-    x: u64,
-    y: u64
-}
+pub struct MapTile(u64, u64);
 
 impl MapTile {
     pub fn new(x: u64, y: u64) -> Self {
-        Self { x, y }
+        Self(x, y)
     }
 
     /// Calculates the x,y part of a tile name from a latitude-longitude pair plus zoom level,
@@ -25,15 +22,15 @@ impl MapTile {
         let lat_rad = (lat * PI) / 180.0;
         let x = (((lon + 180.0) / 360.0) * z_pow).floor() as u64;
         let y = (((1.0 - (lat_rad.tan() + 1.0 / lat_rad.cos()).ln() / PI) / 2.0) * z_pow).floor() as u64;
-        Self { x, y }
+        Self(x, y)
     }
 
     pub fn get_x(&self) -> u64 {
-        self.x
+        self.0
     }
 
     pub fn get_y(&self) -> u64 {
-        self.y
+        self.1
     }
 }
 
