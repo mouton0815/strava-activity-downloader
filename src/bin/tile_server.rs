@@ -1,12 +1,14 @@
 use std::sync::Arc;
 use axum::{BoxError, Json, Router};
-use axum::http::StatusCode;
+use axum::http::{Method, StatusCode};
 use axum::routing::get;
 use axum::extract::State;
 use axum_macros::debug_handler;
 use config::{Config, File};
 use log::{debug, info, warn};
 use tokio::sync::Mutex;
+use tower::ServiceBuilder;
+use tower_http::cors::{Any, CorsLayer};
 use strava_activity_downloader::domain::map_tile::MapTile;
 use strava_activity_downloader::domain::map_zoom::MapZoom;
 use strava_activity_downloader::rest::rest_paths::TILES;
@@ -29,9 +31,13 @@ async fn main() -> Result<(), BoxError> {
     let service = ActivityService::new(ACTIVITY_DB, true)?;
     let state = Arc::new(Mutex::new(service));
 
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET])
+        .allow_origin(Any);
 
     let router = Router::new()
         .route(TILES, get(tiles))
+        .layer(ServiceBuilder::new().layer(cors))
         .with_state(state);
 
     let host = config.get_string("server.host").unwrap_or("localhost".to_string());
