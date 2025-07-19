@@ -2,7 +2,7 @@ use std::sync::Arc;
 use axum::{BoxError, Json, Router};
 use axum::http::{Method, StatusCode};
 use axum::routing::get;
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum_macros::debug_handler;
 use config::{Config, File};
 use log::{debug, info, warn};
@@ -49,10 +49,15 @@ async fn main() -> Result<(), BoxError> {
 }
 
 #[debug_handler]
-async fn tiles(State(state): State<MutexService>) -> Result<Json<Vec<MapTile>>, StatusCode> {
-    debug!("Enter {}", TILES);
+async fn tiles(State(state): State<MutexService>, Path(zoom): Path<u16>) -> Result<Json<Vec<MapTile>>, StatusCode> {
+    debug!("Enter {TILES} for level {zoom}");
+    let zoom = match zoom {
+        14 => MapZoom::Level14,
+        17 => MapZoom::Level17,
+        _ => return Err(StatusCode::BAD_REQUEST)
+    };
     let mut guard = state.lock().await;
-    let tiles = guard.get_tiles(MapZoom::Level14).map_err(error_to_status)?; // TODO: Pass zoom as parameter
+    let tiles = guard.get_tiles(zoom).map_err(error_to_status)?;
     Ok(Json(tiles))
 }
 
