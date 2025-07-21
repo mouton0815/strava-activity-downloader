@@ -156,7 +156,6 @@ impl ActivityService {
 
 #[cfg(test)]
 mod tests {
-    use crate::database::maptile_table::MapTileRow;
     use crate::domain::activity::{Activity, ActivityVec};
     use crate::domain::activity_stats::ActivityStats;
     use crate::domain::activity_stream::ActivityStream;
@@ -208,9 +207,9 @@ mod tests {
         let results = service.get_tiles(MapZoom::Level14);
         assert!(results.is_ok());
         assert_eq!(results.unwrap(), vec![
-            MapTileRow::new(MapTile::new(8237, 8146), 5, 2), // [1.0, 1.0]
-            MapTileRow::new(MapTile::new(8283, 8100), 7, 1), // [2.0, 2.0]
-            MapTileRow::new(MapTile::new(8328, 8055), 5, 1)  // [3.0, 3.0]
+            MapTile::new(8237, 8146), // [1.0, 1.0]
+            MapTile::new(8283, 8100), // [2.0, 2.0]
+            MapTile::new(8328, 8055)  // [3.0, 3.0]
         ]);
     }
 
