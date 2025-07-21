@@ -42,6 +42,7 @@ mod tests {
     const ZOOM: MapZoom = MapZoom::Level14;
 
     // Jena city center tile inner coord and edge coords
+    // Collected with help of https://chrishewett.com/blog/slippy-tile-explorer/?
     const JENA_LAT_N: f64 = 50.930738023718185;
     const JENA_LAT_S: f64 = 50.91688748924508;
     // should be ...4507 but that might hit the precision limits
