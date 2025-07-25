@@ -1,8 +1,10 @@
+use std::env;
 use std::time::Duration;
 use axum::BoxError;
 use config::{Config, File};
 use log::info;
 use tokio::join;
+use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use strava_activity_downloader::domain::server_status::ServerStatus;
 use strava_activity_downloader::oauth::oauth_client::OAuthClient;
@@ -16,18 +18,6 @@ use strava_activity_downloader::util::shutdown_signal::shutdown_signal;
 const CONFIG_YAML : &str = "conf/application.yaml";
 const ACTIVITY_DB: &str = "activity.db";
 
-/*
-#[tokio::main]
-async fn main() -> Result<(), BoxError> {
-    env_logger::init();
-    let in_file = std::fs::File::open("ermlich.stream")?;
-    let reader = BufReader::new(in_file);
-    let stream: ActivityStream = serde_json::from_reader(reader)?;
-    let activity = Activity::new(12345, "2024-01-01T00:00:00Z");
-    write_track(12345, "Foo", "2024-01-01T00:00:00Z", &stream)
-}
- */
-
 #[tokio::main]
 async fn main() -> Result<(), BoxError>  {
     env_logger::init();
@@ -36,8 +26,14 @@ async fn main() -> Result<(), BoxError>  {
         .add_source(File::with_name(CONFIG_YAML))
         .build()?;
 
-    let host = config.get_string("server.host").unwrap_or("localhost".to_string());
-    let port = config.get_int("server.port").unwrap_or(2525) as u16;
+    let host = config.get_string("server.host")
+        .unwrap_or("0.0.0.0".to_string());
+    let port = config.get_string("server.port")
+        .unwrap_or("2525".to_string());
+    let port = env::var("PORT") // Env overwrites config
+        .unwrap_or(port)
+        .parse::<u16>()
+        .expect("The port must be numeric");
 
     let strava_url = config.get_string("strava.api_url").unwrap_or("https://www.strava.com/api/v3".to_string());
     let request_period = config.get_int("strava.request_period").unwrap_or(10) as u64;
@@ -71,7 +67,9 @@ async fn main() -> Result<(), BoxError>  {
     let request_period = Duration::from_secs(request_period);
     let downloader = spawn_download_scheduler(state.clone(), rx_term1, strava_url, request_period);
 
-    let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
+    let addr = format!("{}:{}", host, port);
+    info!("Server listening on http://{addr}");
+    let listener = TcpListener::bind(addr).await?;
     let http_server = spawn_http_server(listener, state.clone(), rx_term2, &web_dir);
 
     shutdown_signal().await;

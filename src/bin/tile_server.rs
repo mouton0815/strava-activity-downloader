@@ -1,3 +1,9 @@
+/////////////////////////////////////////////////////
+//
+// DEPRECATED, tiles are now served by the main app
+//
+/////////////////////////////////////////////////////
+
 use std::env;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -39,7 +45,7 @@ async fn main() -> Result<(), BoxError> {
 
     // Get port from env or default to 8080
     let port = env::var("PORT")
-        .unwrap_or_else(|_| "2727".to_string())
+        .unwrap_or("2727".to_string())
         .parse::<u16>()
         .expect("PORT must be a number");
 
