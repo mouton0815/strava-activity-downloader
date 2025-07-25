@@ -1,5 +1,5 @@
 use axum::{BoxError, Error, Json};
-use axum::extract::State;
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Sse;
 use axum::response::sse::Event;
@@ -9,7 +9,9 @@ use log::{debug, info, warn};
 use tokio::sync::broadcast::Receiver;
 use crate::domain::download_state::DownloadState;
 use crate::domain::server_status::ServerStatus;
-use crate::rest::rest_paths::{STATUS, TOGGLE};
+use crate::rest::rest_paths::{STATUS, TILES, TOGGLE};
+use crate::domain::map_tile::MapTile;
+use crate::domain::map_zoom::MapZoom;
 use crate::state::shared_state::MutexSharedState;
 
 #[allow(dead_code)]
@@ -21,7 +23,7 @@ fn reqwest_error(error: reqwest::Error) -> StatusCode {
     StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-fn map_box_error(error: BoxError) -> StatusCode {
+fn error_to_status(error: BoxError) -> StatusCode {
     warn!("{}", error);
     StatusCode::INTERNAL_SERVER_ERROR
 }
@@ -30,7 +32,7 @@ fn map_box_error(error: BoxError) -> StatusCode {
 pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Json<DownloadState>, StatusCode> {
     debug!("Enter {}", TOGGLE);
     let mut guard = state.lock().await;
-    match guard.oauth.get_bearer().await.map_err(map_box_error)? {
+    match guard.oauth.get_bearer().await.map_err(error_to_status)? {
         Some(_) => {
             guard.download_state = guard.download_state.toggle();
             Ok(Json(guard.download_state.clone()))
@@ -56,7 +58,7 @@ pub async fn status(State(state): State<MutexSharedState>) -> Result<Json<Server
 pub async fn status(State(state): State<MutexSharedState>)
     -> Result<Sse<impl Stream<Item = Result<Event, Error>>>, StatusCode> {
     debug!("Enter {}", STATUS);
-    let mut receiver = subscribe_and_send_first(&state).await.map_err(map_box_error)?;
+    let mut receiver = subscribe_and_send_first(&state).await.map_err(error_to_status)?;
     let mut rx_term = subscribe_term(&state).await;
     let stream = async_stream::stream! {
         loop {
@@ -72,6 +74,19 @@ pub async fn status(State(state): State<MutexSharedState>)
         }
     };
     Ok(Sse::new(stream))
+}
+
+#[debug_handler]
+pub async fn tiles(State(state): State<MutexSharedState>, Path(zoom): Path<u16>) -> Result<Json<Vec<MapTile>>, StatusCode> {
+    debug!("Enter {TILES} for level {zoom}");
+    let zoom = match zoom {
+        14 => MapZoom::Level14,
+        17 => MapZoom::Level17,
+        _ => return Err(StatusCode::BAD_REQUEST)
+    };
+    let mut guard = state.lock().await;
+    let tiles = guard.service.get_tiles(zoom).map_err(error_to_status)?;
+    Ok(Json(tiles))
 }
 
 async fn subscribe_and_send_first(state: &MutexSharedState) -> Result<Receiver<ServerStatus>, BoxError> {
