@@ -1,11 +1,13 @@
+use std::env;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use axum::{BoxError, Json, Router};
 use axum::http::{Method, StatusCode};
 use axum::routing::get;
 use axum::extract::{Path, State};
 use axum_macros::debug_handler;
-use config::{Config, File};
 use log::{debug, info, warn};
+use tokio::net::TcpListener;
 use tokio::sync::Mutex;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
@@ -16,16 +18,11 @@ use strava_activity_downloader::service::activity_service::ActivityService;
 
 type MutexService = Arc<Mutex<ActivityService>>;
 
-const CONFIG_YAML : &str = "conf/application.yaml";
-const ACTIVITY_DB: &str = "activity.db"; // TODO: Move to application.yaml
+const ACTIVITY_DB: &str = "activity.db";
 
 #[tokio::main]
 async fn main() -> Result<(), BoxError> {
     env_logger::init();
-
-    let config = Config::builder()
-        .add_source(File::with_name(CONFIG_YAML))
-        .build()?;
 
     //let service = Arc::new(Mutex::new(ActivityService::new(ACTIVITY_DB, true)?));
     let service = ActivityService::new(ACTIVITY_DB, true)?;
@@ -40,11 +37,15 @@ async fn main() -> Result<(), BoxError> {
         .layer(ServiceBuilder::new().layer(cors))
         .with_state(state);
 
-    let host = config.get_string("server.host").unwrap_or("localhost".to_string());
-    let port = config.get_int("server.port").unwrap_or(3000) as u16;
-    let listener = tokio::net::TcpListener::bind(format!("{}:{}", host, port)).await?;
+    // Get port from env or default to 8080
+    let port = env::var("PORT")
+        .unwrap_or_else(|_| "2727".to_string())
+        .parse::<u16>()
+        .expect("PORT must be a number");
 
-    info!("Tile server running at http://{host}:{port}{TILES}");
+    let addr = SocketAddr::from(([0, 0, 0, 0], port));
+    info!("Tile server listening on https://{addr}{TILES}");
+    let listener = TcpListener::bind(addr).await?;
     Ok(axum::serve(listener, router).await?)
 }
 
