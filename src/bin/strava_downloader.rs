@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, fs};
 use std::time::Duration;
 use axum::BoxError;
 use config::{Config, File};
@@ -13,10 +13,15 @@ use strava_activity_downloader::rest::rest_paths::{AUTH_CALLBACK, STATUS};
 use strava_activity_downloader::service::activity_service::ActivityService;
 use strava_activity_downloader::service::download_scheduler::spawn_download_scheduler;
 use strava_activity_downloader::state::shared_state::SharedState;
+use strava_activity_downloader::track::track_storage::TrackStorage;
 use strava_activity_downloader::util::shutdown_signal::shutdown_signal;
 
 const CONFIG_YAML : &str = "conf/application.yaml";
 const ACTIVITY_DB: &str = "activity.db";
+
+const DEFAULT_HOST: &str = "localhost";
+const DEFAULT_PORT: u16 = 2525;
+const DEFAULT_DATA_DIR: &str = "data";
 
 #[tokio::main]
 async fn main() -> Result<(), BoxError>  {
@@ -26,12 +31,13 @@ async fn main() -> Result<(), BoxError>  {
         .add_source(File::with_name(CONFIG_YAML))
         .build()?;
 
-    let host = config.get_string("server.host")
-        .unwrap_or("0.0.0.0".to_string());
-    let port = config.get_string("server.port")
-        .unwrap_or("2525".to_string());
-    let port = env::var("PORT") // Env overwrites config
-        .unwrap_or(port)
+    let host = env::var("HOST")
+        .unwrap_or_else(|_| config.get_string("server.host")
+            .unwrap_or(DEFAULT_HOST.to_string()));
+
+    let port = env::var("PORT") // Environment precedes config
+        .unwrap_or_else(|_| config.get_string("server.port")
+            .unwrap_or(DEFAULT_PORT.to_string()))
         .parse::<u16>()
         .expect("The port must be numeric");
 
@@ -52,8 +58,16 @@ async fn main() -> Result<(), BoxError>  {
         config.get_string("oauth.target_url").unwrap_or(STATUS.to_string()),
         scopes)?;
 
-    let store_tiles = config.get_bool("extras.store_tiles").unwrap_or(false);
-    let service = ActivityService::new(ACTIVITY_DB, store_tiles)?;
+    let base_path = env::var("DATA_DIR") // Environment precedes config
+        .unwrap_or_else(|_| config.get_string("service.data_dir")
+            .unwrap_or(DEFAULT_DATA_DIR.to_string()));
+    fs::create_dir_all(base_path.as_str())?;
+
+    let db_path = format!("{base_path}/{ACTIVITY_DB}");
+    let store_tiles = config.get_bool("service.store_tiles").unwrap_or(false);
+    let service = ActivityService::new(db_path.as_str(), store_tiles)?;
+
+    let tracks = TrackStorage::new(base_path.as_str());
 
     // Channel for distributing the termination signal to the treads
     let (tx_term, rx_term1) = broadcast::channel(1);
@@ -62,12 +76,12 @@ async fn main() -> Result<(), BoxError>  {
     // Channel for sending data from the producer to the SSE handler
     let (tx_data, _rx_data) = broadcast::channel::<ServerStatus>(3);
 
-    let state = SharedState::new(client, service, tx_data, tx_term.clone(), activities_per_page);
+    let state = SharedState::new(client, service, tracks, tx_data, tx_term.clone(), activities_per_page);
 
     let request_period = Duration::from_secs(request_period);
     let downloader = spawn_download_scheduler(state.clone(), rx_term1, strava_url, request_period);
 
-    let addr = format!("{}:{}", host, port);
+    let addr = format!("{host}:{port}");
     info!("Server listening on http://{addr}");
     let listener = TcpListener::bind(addr).await?;
     let http_server = spawn_http_server(listener, state.clone(), rx_term2, &web_dir);

@@ -1,19 +1,22 @@
 use axum::BoxError;
 use strava_activity_downloader::service::activity_service::ActivityService;
-use strava_activity_downloader::track::read_track::read_track;
+use strava_activity_downloader::track::track_storage::TrackStorage;
+
+const BASE_DIR: &str = "data";
 
 const ACTIVITY_DB: &str = "activity.db";
 
 fn main() -> Result<(), BoxError> {
     env_logger::init();
     println!("Generate tiles for older activities (use RUST_LOG=debug for more information)");
+    let tracks = TrackStorage::new(BASE_DIR);
     let mut service = ActivityService::new(ACTIVITY_DB, true)?;
     // Delete all existing tiles (otherwise the ID of the first activity would be wrong)
     service.delete_all_tiles()?;
     // Iterate over all activities with tracks by increasing start_date
     for activity in service.get_all_with_track()? {
         // Load the corresponding track GPX file
-        let stream = read_track(&activity)?;
+        let stream = tracks.read(&activity)?;
         // Generate and write the tiles for the corresponding activity
         service.put_tiles(&activity, &stream)?;
     }

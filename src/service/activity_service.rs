@@ -10,7 +10,6 @@ use crate::domain::activity_stream::ActivityStream;
 use crate::domain::map_tile::MapTile;
 use crate::domain::track_store_state::TrackStoreState;
 use crate::domain::map_zoom::MapZoom;
-use crate::track::write_track::write_track;
 
 type TileTableMap = HashMap<MapZoom, MapTileTable>;
 
@@ -79,16 +78,6 @@ impl ActivityService {
         tx.commit()?;
         debug!("Number of activities with track: {:?}", activities.len());
         Ok(activities)
-    }
-
-    pub fn store_track(&mut self, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
-        // Store GPX file ...
-        write_track(activity, stream)?;
-        // ... then mark the corresponding activity
-        self.mark_fetched(activity, TrackStoreState::Stored)?;
-        // ... finally compute the tiles and store them
-        self.put_tiles(activity, stream)?;
-        Ok(())
     }
 
     pub fn mark_fetched(&mut self, activity: &Activity, state: TrackStoreState) -> Result<(), BoxError> {

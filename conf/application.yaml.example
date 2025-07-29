@@ -1,5 +1,5 @@
 server:
-  host: 0.0.0.0.0
+  host: "localhost"
   port: 2525
 
 oauth:
@@ -16,5 +16,6 @@ strava:
   request_period: 10 # In seconds, value 10 is suitable for a limit of 100 requests per 15 minutes
   activities_per_page: 100 # Strava maximum is 200
 
-extras:
+service:
+  data_dir: "data"
   store_tiles: true

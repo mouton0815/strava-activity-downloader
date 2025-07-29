@@ -58,15 +58,20 @@ async fn get_earliest_activity_without_track(state: &MutexSharedState) -> Result
 
 async fn store_track(state: &MutexSharedState, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    guard.service.store_track(activity, stream)?;
+    // Write the GPX file ...
+    guard.tracks.write(activity, stream)?;
+    // ... then mark the fetch status of the corresponding activity
+    guard.service.mark_fetched(activity, TrackStoreState::Stored)?;
+    // ... next (and optionally) compute the tiles and store them
+    guard.service.put_tiles(activity, stream)?;
+    // ... finally increase the in-memory stats to be sent to the UI
     guard.merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
     Ok(())
 }
 
-async fn mark_fetched(state: &MutexSharedState, activity: &Activity) -> Result<(), BoxError> {
+async fn mark_track_missing(state: &MutexSharedState, activity: &Activity) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
     guard.service.mark_fetched(activity, TrackStoreState::Missing)?;
-    guard.merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
     Ok(())
 }
 
@@ -117,7 +122,7 @@ async fn stream_task(state: &MutexSharedState, strava_url: &str, bearer: String)
             if let Err(error) = response.as_ref() {
                 if error.status() == Some(reqwest::StatusCode::NOT_FOUND) {
                     warn!("Activity {} has no track", activity.id);
-                    mark_fetched(state, &activity).await?;
+                    mark_track_missing(state, &activity).await?;
                     return Ok(DownloadState::Tracks) // Downloading continues
                 }
                 if error.status() == Some(reqwest::StatusCode::TOO_MANY_REQUESTS) {
@@ -137,7 +142,7 @@ async fn stream_task(state: &MutexSharedState, strava_url: &str, bearer: String)
                 Err(error) => {
                     // A known case is that the activity stream does not contain a "latlon" array
                     warn!("Failed to parse the track of activity {}: {}", activity.id, error);
-                    mark_fetched(state, &activity).await?;
+                    mark_track_missing(state, &activity).await?;
                     Ok(DownloadState::Tracks) // Downloading continues
                 }
             }

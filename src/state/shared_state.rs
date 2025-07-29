@@ -7,6 +7,7 @@ use crate::domain::download_state::DownloadState;
 use crate::domain::server_status::ServerStatus;
 use crate::oauth::oauth_client::OAuthClient;
 use crate::service::activity_service::ActivityService;
+use crate::track::track_storage::TrackStorage;
 
 // TODO: Unit tests!
 
@@ -14,6 +15,7 @@ use crate::service::activity_service::ActivityService;
 pub struct SharedState {
     pub oauth: OAuthClient,
     pub service: ActivityService,
+    pub tracks: TrackStorage,
     pub tx_data: Sender<ServerStatus>, // Broadcast sender used by the downloader to inform the SSE endpoint
     pub tx_term: Sender<()>,  // Broadcast sender used by the SSE handlers to inform about server termination
     pub activity_stats: Option<ActivityStats>, // Holds last version of DB activity stats
@@ -26,12 +28,14 @@ pub type MutexSharedState = Arc<Mutex<SharedState>>;
 impl SharedState {
     pub fn new(oauth: OAuthClient,
                service: ActivityService,
+               tracks: TrackStorage,
                tx_data: Sender<ServerStatus>,
                tx_term: Sender<()>,
                activities_per_page: u16) -> MutexSharedState {
         Arc::new(Mutex::new(Self {
             oauth,
             service,
+            tracks,
             tx_data,
             tx_term,
             activity_stats: None,
