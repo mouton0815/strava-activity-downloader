@@ -28,8 +28,8 @@ impl OAuthClient {
                client_secret: String,
                auth_url: String,
                token_url: String,
-               redirect_url: String,
                target_url: String,
+               redirect_url: String,
                scopes: Vec<String>,
     ) -> Result<OAuthClient, BoxError> {
         let client = BasicClient::new(

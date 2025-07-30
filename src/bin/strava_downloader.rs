@@ -22,6 +22,7 @@ const ACTIVITY_DB: &str = "activity.db";
 const DEFAULT_HOST: &str = "localhost";
 const DEFAULT_PORT: u16 = 2525;
 const DEFAULT_DATA_DIR: &str = "data";
+const WEB_DIR: &str = "web/dist";
 
 #[tokio::main]
 async fn main() -> Result<(), BoxError>  {
@@ -45,17 +46,20 @@ async fn main() -> Result<(), BoxError>  {
     let request_period = config.get_int("strava.request_period").unwrap_or(10) as u64;
     let activities_per_page = config.get_int("strava.activities_per_page").unwrap_or(30) as u16;
 
-    let web_dir = format!("{}/web/dist", std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let redirect_url = env::var("REDIRECT_URL")
+        .unwrap_or_else(|_| config.get_string("oauth.redirect_url")
+            .unwrap_or(format!("http://{host}:{port}")));
 
     let scopes : Vec<String> = config.get_array("oauth.scopes").unwrap_or(Vec::new())
         .iter().map(|v| v.clone().into_string().expect(CONFIG_YAML)).collect();
+
     let client = OAuthClient::new(
         config.get_string("oauth.client_id").expect(CONFIG_YAML),
         config.get_string("oauth.client_secret").expect(CONFIG_YAML),
         config.get_string("oauth.auth_url").expect(CONFIG_YAML),
         config.get_string("oauth.token_url").expect(CONFIG_YAML),
-        format!("http://{}:{}{}", host, port, AUTH_CALLBACK),
         config.get_string("oauth.target_url").unwrap_or(STATUS.to_string()),
+        format!("{redirect_url}{AUTH_CALLBACK}"),
         scopes)?;
 
     let base_path = env::var("DATA_DIR") // Environment precedes config
@@ -84,7 +88,7 @@ async fn main() -> Result<(), BoxError>  {
     let addr = format!("{host}:{port}");
     info!("Server listening on http://{addr}");
     let listener = TcpListener::bind(addr).await?;
-    let http_server = spawn_http_server(listener, state.clone(), rx_term2, &web_dir);
+    let http_server = spawn_http_server(listener, state.clone(), rx_term2, WEB_DIR);
 
     shutdown_signal().await;
     info!("Termination signal received");
