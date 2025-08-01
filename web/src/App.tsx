@@ -4,7 +4,7 @@ import {LoginButton} from './LoginButton'
 import {ToggleButton} from './ToggleButton'
 import {StatusTable} from "./StatusTable";
 
-const SERVER_URL = 'http://localhost:2525' // Base URL of the Rust server
+const SERVER_URL = '' // Base URL of the Rust server, use http://localhost:2525 in dev mode
 const LOGIN_URL = `${SERVER_URL}/authorize`
 const TOGGLE_URL = `${SERVER_URL}/toggle`
 const STATUS_URL = `${SERVER_URL}/status`

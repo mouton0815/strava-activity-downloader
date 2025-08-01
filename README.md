@@ -75,6 +75,10 @@ after authenticating with Strava, the `target_url` configured in `conf/applicati
 oauth:
   target_url: "http://localhost:2020" # Redirect to after authentication
 ```
+In addition, the React app needs to fetch the data from an absolute address. In [App.tsx](./web/src/App.tsx) change
+```javascript
+const SERVER_URL = 'http://localhost:2525'
+```
 Then start the dev server in another shell (tab):
 ```shell
 cd web

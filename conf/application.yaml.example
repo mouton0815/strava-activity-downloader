@@ -7,7 +7,7 @@ oauth:
   client_secret: "<your-strava-client-secret>"
   auth_url: "https://www.strava.com/oauth/authorize"
   token_url: "https://www.strava.com/oauth/token"
-  target_url: "http://localhost:2525" # Redirect to after authentication
+  target_url: "/" # Redirect to after authentication
   scopes:
     - activity:read_all
 
