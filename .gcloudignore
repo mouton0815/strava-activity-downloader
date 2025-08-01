@@ -1,0 +1,15 @@
+.gcloudignore
+.git
+.gitignore
+
+# Exclude everything listed in .gitignore
+#!include:.gitignore
+
+# Exclude these additional files:
+README.md
+Deploy.md
+screenshot.png
+sim/
+
+# Re-include this file:
+!application.yaml

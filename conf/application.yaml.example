@@ -1,5 +1,5 @@
 server:
-  host: "localhost"
+  host: 0.0.0.0
   port: 2525
 
 oauth:
@@ -7,7 +7,8 @@ oauth:
   client_secret: "<your-strava-client-secret>"
   auth_url: "https://www.strava.com/oauth/authorize"
   token_url: "https://www.strava.com/oauth/token"
-  target_url: "/" # Redirect to after authentication
+  redirect_url: "http://localhost:2525" # Redirect from IdP to Rust server after authentication
+  target_url: "/" # Redirect from Rust server to frontend after authentication
   scopes:
     - activity:read_all
 
