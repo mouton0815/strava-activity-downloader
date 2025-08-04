@@ -10,10 +10,15 @@ use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
 use crate::rest::rest_handlers::{status, tiles, toggle};
 use crate::rest::oauth_handlers::{authorize, callback};
-use crate::rest::rest_paths::{AUTH_CALLBACK, AUTHORIZE, STATUS, TILES, TOGGLE};
+use crate::rest::rest_paths::{AUTH_CALLBACK, AUTHORIZE, StaticDir, STATUS, TILES, TOGGLE};
 use crate::state::shared_state::MutexSharedState;
 
-pub fn spawn_http_server(listener: TcpListener, state: MutexSharedState, mut rx_term: Receiver<()>, web_dir: &str) -> JoinHandle<()> {
+pub fn spawn_http_server(
+    listener: TcpListener,
+    state: MutexSharedState,
+    mut rx_term: Receiver<()>,
+    web_dir: &StaticDir,
+    map_dir: &StaticDir) -> JoinHandle<()> {
     info!("Spawn HTTP server");
 
     let cors = CorsLayer::new()
@@ -27,7 +32,8 @@ pub fn spawn_http_server(listener: TcpListener, state: MutexSharedState, mut rx_
         .route(AUTH_CALLBACK, get(callback))
         .route(TILES, get(tiles))
         .layer(ServiceBuilder::new().layer(cors))
-        .nest_service("/", ServeDir::new(web_dir))
+        .nest_service(web_dir.rest_path, ServeDir::new(web_dir.file_path))
+        .nest_service(map_dir.rest_path, ServeDir::new(map_dir.file_path))
         .with_state(state);
 
     tokio::spawn(async move {
