@@ -64,6 +64,7 @@ async fn main() -> Result<(), BoxError>  {
     let base_path = env::var("DATA_DIR") // Environment precedes config
         .unwrap_or_else(|_| config.get_string("service.data_dir")
             .unwrap_or(DEFAULT_DATA_DIR.to_string()));
+    info!("Data base path: {base_path}");
     fs::create_dir_all(base_path.as_str())?;
 
     let db_path = format!("{base_path}/{ACTIVITY_DB}");

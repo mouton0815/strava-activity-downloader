@@ -4,7 +4,7 @@ import { MapContainer, Rectangle, TileLayer, useMap } from 'react-leaflet'
 import { Coords, Tile } from 'tiles-math'
 import './App.css'
 
-const SERVER_URL = 'http://localhost:2525' // Base URL of the Rust server, use http://localhost:2525 in dev mode
+const SERVER_URL = '' // Base URL of the Rust server, use http://localhost:2525 in dev mode
 const TILES_URL = `${SERVER_URL}/tiles`
 
 const TILE_ZOOM = 14
