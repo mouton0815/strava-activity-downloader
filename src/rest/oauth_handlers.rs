@@ -12,7 +12,7 @@ pub struct CallbackQuery {
     state: String,
 }
 
-pub async fn authorize(State(state): State<MutexSharedState>) -> Result<Response, StatusCode> {
+pub async fn authorize_handler(State(state): State<MutexSharedState>) -> Result<Response, StatusCode> {
     let mut guard = state.lock().await;
     match guard.oauth.get_bearer().await {
         Ok(bearer) => {
@@ -36,7 +36,7 @@ pub async fn authorize(State(state): State<MutexSharedState>) -> Result<Response
 }
 
 #[debug_handler]
-pub async fn callback(State(state): State<MutexSharedState>, query: Query<CallbackQuery>) -> Result<Redirect, StatusCode> {
+pub async fn callback_handler(State(state): State<MutexSharedState>, query: Query<CallbackQuery>) -> Result<Redirect, StatusCode> {
     debug!("Authorized with code {}", query.code);
     let mut guard = state.lock().await;
     match guard.oauth.callback_auth_code_grant(&query.code, &query.state).await {

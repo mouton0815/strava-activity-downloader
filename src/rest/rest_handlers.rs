@@ -29,7 +29,8 @@ fn error_to_status(error: BoxError) -> StatusCode {
 }
 
 #[debug_handler]
-pub async fn toggle(State(state): State<MutexSharedState>) -> Result<Json<DownloadState>, StatusCode> {
+pub async fn toggle_handler(State(state): State<MutexSharedState>)
+    -> Result<Json<DownloadState>, StatusCode> {
     debug!("Enter {}", TOGGLE);
     let mut guard = state.lock().await;
     match guard.oauth.get_bearer().await.map_err(error_to_status)? {
@@ -55,7 +56,7 @@ pub async fn status(State(state): State<MutexSharedState>) -> Result<Json<Server
 */
 
 #[debug_handler]
-pub async fn status(State(state): State<MutexSharedState>)
+pub async fn status_handler(State(state): State<MutexSharedState>)
     -> Result<Sse<impl Stream<Item = Result<Event, Error>>>, StatusCode> {
     debug!("Enter {}", STATUS);
     let mut receiver = subscribe_and_send_first(&state).await.map_err(error_to_status)?;
@@ -77,7 +78,8 @@ pub async fn status(State(state): State<MutexSharedState>)
 }
 
 #[debug_handler]
-pub async fn tiles(State(state): State<MutexSharedState>, Path(zoom): Path<u16>) -> Result<Json<Vec<MapTile>>, StatusCode> {
+pub async fn tiles_handler(State(state): State<MutexSharedState>, Path(zoom): Path<u16>)
+    -> Result<Json<Vec<MapTile>>, StatusCode> {
     debug!("Enter {TILES} for level {zoom}");
     let zoom = match zoom {
         14 => MapZoom::Level14,

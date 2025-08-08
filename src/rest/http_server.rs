@@ -8,8 +8,8 @@ use tokio::task::JoinHandle;
 use tower::ServiceBuilder;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::ServeDir;
-use crate::rest::rest_handlers::{status, tiles, toggle};
-use crate::rest::oauth_handlers::{authorize, callback};
+use crate::rest::rest_handlers::{status_handler, tiles_handler, toggle_handler};
+use crate::rest::oauth_handlers::{authorize_handler, callback_handler};
 use crate::rest::rest_paths::{AUTH_CALLBACK, AUTHORIZE, StaticDir, STATUS, TILES, TOGGLE};
 use crate::state::shared_state::MutexSharedState;
 
@@ -26,11 +26,11 @@ pub fn spawn_http_server(
         .allow_origin(Any);
 
     let router = Router::new()
-        .route(STATUS, get(status))
-        .route(TOGGLE, get(toggle))
-        .route(AUTHORIZE, get(authorize))
-        .route(AUTH_CALLBACK, get(callback))
-        .route(TILES, get(tiles))
+        .route(STATUS, get(status_handler))
+        .route(TOGGLE, get(toggle_handler))
+        .route(AUTHORIZE, get(authorize_handler))
+        .route(AUTH_CALLBACK, get(callback_handler))
+        .route(TILES, get(tiles_handler))
         .layer(ServiceBuilder::new().layer(cors))
         .nest_service(web_dir.rest_path, ServeDir::new(web_dir.file_path))
         .nest_service(map_dir.rest_path, ServeDir::new(map_dir.file_path))
@@ -59,7 +59,7 @@ mod tests {
     use crate::domain::server_status::ServerStatus;
     use crate::oauth::oauth_client::OAuthClient;
     use crate::rest::rest_paths::TILES;
-    use crate::rest::rest_handlers::tiles;
+    use crate::rest::rest_handlers::tiles_handler;
     use crate::service::activity_service::ActivityService;
     use crate::state::shared_state::SharedState;
     use crate::track::track_storage::TrackStorage;
@@ -81,7 +81,7 @@ mod tests {
         let state = SharedState::new(client, service, tracks, tx_data, tx_term, 0);
 
         let router = Router::new()
-            .route(TILES, get(tiles))
+            .route(TILES, get(tiles_handler))
             .with_state(state);
 
         let server = TestServer::new(router).unwrap();
