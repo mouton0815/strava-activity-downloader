@@ -18,7 +18,7 @@ fn main() -> Result<(), BoxError> {
         // Load the corresponding track GPX file
         let stream = tracks.read(&activity)?;
         // Generate and write the tiles for the corresponding activity
-        service.put_tiles(&activity, &stream)?;
+        service.store_tiles(&activity, &stream)?;
     }
     Ok(())
 }

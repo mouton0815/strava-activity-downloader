@@ -88,18 +88,32 @@ impl ActivityService {
         Ok(())
     }
 
-    pub fn put_tiles(&mut self, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
-        if let Some(tile_tables) = &self.tile_tables {
-            let tx = self.connection.transaction()?;
+    /// Derives and stores the tiles for all zoom levels from the given activity stream
+    pub fn store_tiles(&mut self, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
+        if let Some(_) = &self.tile_tables {
             for zoom in MapZoom::VALUES {
-                let table = &tile_tables[&zoom];
                 let tiles = stream.to_tiles(zoom)?;
-                debug!("Save {} tiles with zoom level {} for activity {}", tiles.len(), zoom.value(), activity.id);
-                for tile in tiles {
-                    table.upsert(&tx, &tile, activity.id)?;
-                }
+                self.put_tiles(zoom, activity.id, &tiles)?;
             }
-            tx.commit()?;
+        }
+        Ok(())
+    }
+
+    /// Stores tiles for the given zoom level
+    pub fn put_tiles(&mut self, zoom: MapZoom, activity_id: u64, tiles: &Vec<MapTile>) -> Result<(), BoxError> {
+        match &self.tile_tables {
+            Some(tile_tables) => {
+                let tx = self.connection.transaction()?;
+                let table = &tile_tables[&zoom];
+                debug!("Save {} tiles with zoom level {} for activity {}", tiles.len(), zoom.value(), activity_id);
+                for tile in tiles {
+                    table.upsert(&tx, &tile, activity_id)?;
+                }
+                tx.commit()?;
+            }
+            None => { // Check should happen in calling function
+                warn!("Tile storage disabled");
+            }
         }
         Ok(())
     }
@@ -190,8 +204,8 @@ mod tests {
 
         let mut service = create_service();
         assert!(service.add(&activities).is_ok());
-        assert!(service.put_tiles(&activities[0], &stream1).is_ok());
-        assert!(service.put_tiles(&activities[1], &stream2).is_ok());
+        assert!(service.store_tiles(&activities[0], &stream1).is_ok());
+        assert!(service.store_tiles(&activities[1], &stream2).is_ok());
 
         let results = service.get_tiles(MapZoom::Level14);
         assert!(results.is_ok());

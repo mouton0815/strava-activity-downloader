@@ -31,7 +31,7 @@ impl OAuthClient {
                target_url: String,
                redirect_url: String,
                scopes: Vec<String>,
-    ) -> Result<OAuthClient, BoxError> {
+    ) -> Result<Self, BoxError> {
         let client = BasicClient::new(
             ClientId::new(client_id),
             Some(ClientSecret::new(client_secret.to_string())),
@@ -144,4 +144,24 @@ async fn request_wrapper(request: HttpRequest) -> Result<HttpResponse, oauth2::r
     debug!("Token request URL: {}", request.url);
     debug!("Token request body: {:?}", String::from_utf8_lossy(&request.body));
     async_http_client(request).await
+}
+
+#[cfg(test)]
+mod tests {
+    use oauth2::basic::BasicClient;
+    use oauth2::{AuthUrl, ClientId, ClientSecret, TokenUrl};
+    use crate::oauth::oauth_client::OAuthClient;
+
+    impl OAuthClient {
+        pub fn dummy() -> Self {
+            let dummy_url = "https://dummy.org";
+            let client = BasicClient::new(
+                ClientId::new("dummy-client".to_string()),
+                Some(ClientSecret::new("dummy-secret".to_string())),
+                AuthUrl::new(dummy_url.to_string()).unwrap(),
+                Some(TokenUrl::new(dummy_url.to_string()).unwrap())
+            );
+            Self { client, scopes: vec![], state: None, target: dummy_url.to_string(), token: None }
+        }
+    }
 }

@@ -63,7 +63,7 @@ async fn store_track(state: &MutexSharedState, activity: &Activity, stream: &Act
     // ... then mark the fetch status of the corresponding activity
     guard.service.mark_fetched(activity, TrackStoreState::Stored)?;
     // ... next (and optionally) compute the tiles and store them
-    guard.service.put_tiles(activity, stream)?;
+    guard.service.store_tiles(activity, stream)?;
     // ... finally increase the in-memory stats to be sent to the UI
     guard.merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
     Ok(())
