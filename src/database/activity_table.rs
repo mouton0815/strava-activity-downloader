@@ -99,7 +99,7 @@ impl ActivityTable {
         let activity_iter = stmt.query_map([], |row| {
             Self::row_to_activity(row)
         })?;
-        activity_iter.collect::<Result<_, _>>()
+        activity_iter.collect::<Result<ActivityVec, _>>()
     }
 
     pub fn select_by_id(tx: &Transaction, id: u64) -> Result<Option<Activity>> {
@@ -116,7 +116,7 @@ impl ActivityTable {
         let activity_iter = stmt.query_map([], |row| {
             Self::row_to_activity(row)
         })?;
-        activity_iter.collect::<Result<_, _>>()
+        activity_iter.collect::<Result<ActivityVec, _>>()
     }
 
     pub fn select_earliest_without_track(tx: &Transaction) -> Result<Option<Activity>> {

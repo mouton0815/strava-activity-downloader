@@ -64,7 +64,7 @@ async fn tiles(State(state): State<MutexService>, Path(zoom): Path<u16>) -> Resu
         _ => return Err(StatusCode::BAD_REQUEST)
     };
     let mut guard = state.lock().await;
-    let tiles = guard.get_tiles(zoom).map_err(error_to_status)?;
+    let tiles = guard.get_tiles(zoom, None).map_err(error_to_status)?;
     Ok(Json(tiles))
 }
 

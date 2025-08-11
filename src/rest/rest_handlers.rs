@@ -1,16 +1,19 @@
+use std::num::ParseIntError;
 use axum::{BoxError, Error, Json};
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::Sse;
 use axum::response::sse::Event;
 use axum_macros::debug_handler;
 use futures::Stream;
 use log::{debug, info, warn};
+use serde::Deserialize;
 use tokio::sync::broadcast::Receiver;
 use crate::domain::download_state::DownloadState;
 use crate::domain::server_status::ServerStatus;
 use crate::rest::rest_paths::{STATUS, TILES, TOGGLE};
 use crate::domain::map_tile::MapTile;
+use crate::domain::map_tile_bounds::MapTileBounds;
 use crate::domain::map_zoom::MapZoom;
 use crate::state::shared_state::MutexSharedState;
 
@@ -23,7 +26,7 @@ fn reqwest_error(error: reqwest::Error) -> StatusCode {
     StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
 }
 
-fn error_to_status(error: BoxError) -> StatusCode {
+fn internal_server_error(error: BoxError) -> StatusCode {
     warn!("{}", error);
     StatusCode::INTERNAL_SERVER_ERROR
 }
@@ -33,7 +36,7 @@ pub async fn toggle_handler(State(state): State<MutexSharedState>)
     -> Result<Json<DownloadState>, StatusCode> {
     debug!("Enter {}", TOGGLE);
     let mut guard = state.lock().await;
-    match guard.oauth.get_bearer().await.map_err(error_to_status)? {
+    match guard.oauth.get_bearer().await.map_err(internal_server_error)? {
         Some(_) => {
             guard.download_state = guard.download_state.toggle();
             Ok(Json(guard.download_state.clone()))
@@ -59,7 +62,7 @@ pub async fn status(State(state): State<MutexSharedState>) -> Result<Json<Server
 pub async fn status_handler(State(state): State<MutexSharedState>)
     -> Result<Sse<impl Stream<Item = Result<Event, Error>>>, StatusCode> {
     debug!("Enter {}", STATUS);
-    let mut receiver = subscribe_and_send_first(&state).await.map_err(error_to_status)?;
+    let mut receiver = subscribe_and_send_first(&state).await.map_err(internal_server_error)?;
     let mut rx_term = subscribe_term(&state).await;
     let stream = async_stream::stream! {
         loop {
@@ -77,18 +80,53 @@ pub async fn status_handler(State(state): State<MutexSharedState>)
     Ok(Sse::new(stream))
 }
 
+#[derive(Deserialize, Debug)]
+pub struct TilesParams {
+    bounds: Option<String>
+}
+
 #[debug_handler]
-pub async fn tiles_handler(State(state): State<MutexSharedState>, Path(zoom): Path<u16>)
+pub async fn tiles_handler(State(state): State<MutexSharedState>, Path(zoom): Path<u16>, Query(params): Query<TilesParams>)
     -> Result<Json<Vec<MapTile>>, StatusCode> {
-    debug!("Enter {TILES} for level {zoom}");
-    let zoom = match zoom {
-        14 => MapZoom::Level14,
-        17 => MapZoom::Level17,
-        _ => return Err(StatusCode::BAD_REQUEST)
-    };
+    debug!("Enter {TILES} for level {zoom} with bounds {:?}", params.bounds);
+    let zoom = parse_zoom(zoom)?;
+    let bounds = parse_bounds(params.bounds)?;
     let mut guard = state.lock().await;
-    let tiles = guard.service.get_tiles(zoom).map_err(error_to_status)?;
+    let tiles = guard.service.get_tiles(zoom, bounds).map_err(internal_server_error)?;
     Ok(Json(tiles))
+}
+
+fn parse_zoom(zoom: u16) -> Result<MapZoom, StatusCode> {
+    match zoom {
+        14 => Ok(MapZoom::Level14),
+        17 => Ok(MapZoom::Level17),
+        _ => Err(StatusCode::BAD_REQUEST)
+    }
+}
+
+fn parse_bounds(bounds: Option<String>) -> Result<Option<MapTileBounds>, StatusCode> {
+    match bounds {
+        Some(bounds_str) => {
+            let parsed: Result<Vec<u64>, ParseIntError> = bounds_str.split(",")
+                .map(|token| token.parse::<u64>())
+                .collect();
+            match parsed {
+                Ok(coords) => {
+                    if coords.len() == 4 {
+                        Ok(Some(MapTileBounds::new(coords[0], coords[1], coords[2], coords[3])))
+                    } else {
+                        warn!("Malformed parameter: bounds={bounds_str} (need four positions)");
+                        Err(StatusCode::BAD_REQUEST)
+                    }
+                }
+                Err(_) => {
+                    warn!("Malformed parameter: bounds={bounds_str} (positions not numeric)");
+                    Err(StatusCode::BAD_REQUEST)
+                }
+            }
+        },
+        None => Ok(None)
+    }
 }
 
 async fn subscribe_and_send_first(state: &MutexSharedState) -> Result<Receiver<ServerStatus>, BoxError> {

@@ -66,13 +66,27 @@ mod tests {
 
     #[tokio::test]
     async fn test_tiles() {
+        let tiles: Vec<MapTile> = vec![MapTile::new(1, 1), MapTile::new(2, 2)];
+        let server = create_tiles_server(&tiles, MapZoom::Level14);
+        let result = server.get("/tiles/14").await.json::<Vec<MapTile>>();
+        assert_eq!(result, tiles);
+    }
+
+    #[tokio::test]
+    async fn test_tiles_bounds() {
+        let tiles: Vec<MapTile> = vec![MapTile::new(1, 1), MapTile::new(2, 2)];
+        let server = create_tiles_server(&tiles, MapZoom::Level14);
+        let result1 = server.get("/tiles/14?bounds=2,2,2,2").await.json::<Vec<MapTile>>();
+        assert_eq!(result1, vec![MapTile::new(2, 2)]);
+    }
+
+    fn create_tiles_server(tiles: &Vec<MapTile>, zoom: MapZoom) -> TestServer {
         let activity_id = 5;
         let activities = vec![Activity::dummy(activity_id, "2018-02-20T18:02:13Z")];
-        let tiles_14: Vec<MapTile> = vec![MapTile::new(1, 1), MapTile::new(2, 2)];
 
         let mut service = ActivityService::new(":memory:", true).unwrap();
-        assert!(service.add(&activities).is_ok());
-        assert!(service.put_tiles(MapZoom::Level14, activity_id, &tiles_14).is_ok());
+        service.add(&activities).unwrap();
+        service.put_tiles(zoom, activity_id, &tiles).unwrap();
 
         let client = OAuthClient::dummy();
         let tracks = TrackStorage::new(""); // TODO: Allow disabling track storage
@@ -84,8 +98,6 @@ mod tests {
             .route(TILES, get(tiles_handler))
             .with_state(state);
 
-        let server = TestServer::new(router).unwrap();
-        let text = server.get("/tiles/14").await.json::<Vec<MapTile>>();
-        assert_eq!(text, tiles_14);
+        TestServer::new(router).unwrap()
     }
 }
