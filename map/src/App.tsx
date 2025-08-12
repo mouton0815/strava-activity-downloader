@@ -29,16 +29,30 @@ class TileBounds {
             coords2tile([bounds.getNorth(), bounds.getWest()], TILE_ZOOM),
             coords2tile([bounds.getSouth(), bounds.getEast()], TILE_ZOOM))
     }
+    contains(that: TileBounds): boolean {
+        return this.x1 <= that.x1 && this.y1 <= that.y1 && this.x2 >= that.x2 && this.y2 >= that.y2
+    }
 }
 
-// TODO: Clip to map screen and reload if needed?
-async function loadTiles(bounds: TileBounds | null): Promise<Array<TileTuple>> {
+let tileCache: Array<TileTuple> = []
+let prevBounds: TileBounds | null = null
+
+async function loadTiles(bounds: TileBounds): Promise<Array<TileTuple>> {
+    const boundsParam = `bounds=${bounds.x1},${bounds.y1},${bounds.x2},${bounds.y2}`
+    const response = await fetch(`${TILES_URL}/${TILE_ZOOM}?${boundsParam}`)
+    return await response.json()
+}
+
+async function loadTilesCached(bounds: TileBounds | null): Promise<Array<TileTuple>> {
     // return Promise.resolve([[8755,5460],[8755,5461]])
-    if (bounds) {
-        const boundsParam = `bounds=${bounds.x1 + 1},${bounds.y1 + 1},${bounds.x2 - 1},${bounds.y2 - 1}`
+    if (bounds) { // Null until the initial Leaflet event
+        if (prevBounds && prevBounds.contains(bounds)) {
+            return tileCache
+        }
         try {
-            const response = await fetch(`${TILES_URL}/${TILE_ZOOM}?${boundsParam}`)
-            return await response.json()
+            tileCache = await loadTiles(bounds)
+            prevBounds = bounds
+            return tileCache
         } catch (e) {
             console.warn('Cannot fetch data from server:', e)
         }
@@ -110,7 +124,7 @@ function LoadContainer() {
     // console.log("-----> PASS with ", bounds)
     return (
         <Suspense fallback={<div>Loading...</div>}>
-            <TileContainer tilesPromise={loadTiles(bounds)} />
+            <TileContainer tilesPromise={loadTilesCached(bounds)} />
         </Suspense>
     )
 }
