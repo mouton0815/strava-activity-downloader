@@ -1,7 +1,7 @@
 import { Suspense, use, useEffect, useState } from 'react'
 import { divIcon, LatLng, LatLngBounds, LatLngTuple, marker } from 'leaflet'
 import { MapContainer, Rectangle, TileLayer, useMapEvents } from 'react-leaflet'
-import { Coords, coords2tile, Tile, TileNo } from 'tiles-math'
+import { coords2tile, Tile, TileNo } from 'tiles-math'
 import './App.css'
 
 const SERVER_URL = 'http://localhost:2525' // Base URL of the Rust server, use http://localhost:2525 in dev mode
@@ -10,6 +10,8 @@ const TILES_URL = `${SERVER_URL}/tiles`
 const TILE_ZOOM = 14
 const CROSSHAIR_SIZE = 50
 const DEFAULT_CENTER: LatLngTuple = [51.33962, 12.37129] // Leipzig (will be relocated if user gives consent)
+
+type TileTuple = [number, number] // Tile [x,y] as delivered by the REST endpoint
 
 class TileBounds {
     x1: number
@@ -22,13 +24,18 @@ class TileBounds {
         this.x2 = lowerRight.x
         this.y2 = lowerRight.y
     }
+    static fromLatLngBounds(bounds: LatLngBounds): TileBounds {
+        return new TileBounds(
+            coords2tile([bounds.getNorth(), bounds.getWest()], TILE_ZOOM),
+            coords2tile([bounds.getSouth(), bounds.getEast()], TILE_ZOOM))
+    }
 }
 
 // TODO: Clip to map screen and reload if needed?
-async function loadTiles(bounds: TileBounds | null): Promise<Array<Coords>> {
+async function loadTiles(bounds: TileBounds | null): Promise<Array<TileTuple>> {
     // return Promise.resolve([[8755,5460],[8755,5461]])
     if (bounds) {
-        const boundsParam = `bounds=${bounds.x1},${bounds.y1},${bounds.x2},${bounds.y2}`
+        const boundsParam = `bounds=${bounds.x1 + 1},${bounds.y1 + 1},${bounds.x2 - 1},${bounds.y2 - 1}`
         try {
             const response = await fetch(`${TILES_URL}/${TILE_ZOOM}?${boundsParam}`)
             return await response.json()
@@ -37,12 +44,6 @@ async function loadTiles(bounds: TileBounds | null): Promise<Array<Coords>> {
         }
     }
     return []
-}
-
-function getTileBounds(bounds: LatLngBounds): TileBounds {
-    return new TileBounds(
-        coords2tile([bounds.getNorth(), bounds.getWest()], TILE_ZOOM),
-        coords2tile([bounds.getSouth(), bounds.getEast()], TILE_ZOOM))
 }
 
 export function App() {
@@ -86,15 +87,15 @@ function LoadContainer() {
         },
         moveend: () => {
             // console.log('-----> moved')
-            setBounds(getTileBounds(map.getBounds()))
+            setBounds(TileBounds.fromLatLngBounds(map.getBounds()))
         },
         zoomend: () => {
             // console.log('-----> zoomed')
-            setBounds(getTileBounds(map.getBounds()))
+            setBounds(TileBounds.fromLatLngBounds(map.getBounds()))
         },
         viewreset: () => {
             // console.log('-----> reset')
-            setBounds(getTileBounds(map.getBounds()))
+            setBounds(TileBounds.fromLatLngBounds(map.getBounds()))
         }
     })
 
@@ -115,14 +116,14 @@ function LoadContainer() {
 }
 
 type TileContainerProps = {
-    tilesPromise: Promise<Array<Coords>>
+    tilesPromise: Promise<Array<TileTuple>>
 }
 
 function TileContainer({ tilesPromise }: TileContainerProps) {
     const tiles = use(tilesPromise)
     return (
         <div>
-            {tiles.map(coords => Tile.of(coords[0], coords[1], TILE_ZOOM)).map((tile, index) =>
+            {tiles.map(tuple => Tile.of(tuple[0], tuple[1], TILE_ZOOM)).map((tile, index) =>
                 <Rectangle key={index} bounds={tile.bounds()}
                            pathOptions={{color: 'blue', weight: 0.5, opacity: 0.5}}/>
             )}
