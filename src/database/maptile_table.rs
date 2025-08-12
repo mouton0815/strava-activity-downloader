@@ -24,7 +24,7 @@ const SELECT_TILES : &str =
     "SELECT x, y, activity_id, activity_count FROM $table_name ORDER BY x, y";
 
 const SELECT_TILES_BOUNDED : &str =
-    "SELECT x, y, activity_id, activity_count FROM $table_name WHERE x >= ? AND y >= ? AND x <= ? and y <= ? ORDER BY x, y";
+    "SELECT x, y, activity_id, activity_count FROM $table_name WHERE (x BETWEEN ? AND ?) AND (y BETWEEN ? AND ?) ORDER BY x, y";
 
 const DELETE_TILES : &str =
     "DELETE FROM $table_name";
@@ -79,7 +79,7 @@ impl MapTileTable {
         };
         debug!("Execute\n{sql}");
         let params: &[&dyn ToSql] = match bounds {
-            Some(ref bounds) => &[&bounds.x1, &bounds.y1, &bounds.x2, &bounds.y2],
+            Some(ref bounds) => &[&bounds.x1, &bounds.x2, &bounds.y1, &bounds.y2],
             None => &[]
         };
         let mut stmt = tx.prepare(&sql)?;
