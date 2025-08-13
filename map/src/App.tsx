@@ -1,17 +1,20 @@
 import { Suspense, use, useEffect, useState } from 'react'
 import { divIcon, LatLng, LatLngBounds, LatLngTuple, marker } from 'leaflet'
-import { MapContainer, Rectangle, TileLayer, useMapEvents } from 'react-leaflet'
+import { MapContainer, Pane, Rectangle, TileLayer, useMapEvents } from 'react-leaflet'
 import { coords2tile, Tile, TileNo } from 'tiles-math'
 import './App.css'
 
 const SERVER_URL = 'http://localhost:2525' // Base URL of the Rust server, use http://localhost:2525 in dev mode
 const TILES_URL = `${SERVER_URL}/tiles`
 
-const TILE_ZOOM = 14
+const TILE_ZOOM_LEVELS = [14, 17]
+const TILE_ZOOM_COLORS = ['blue', 'yellow']
 const CROSSHAIR_SIZE = 50
 const DEFAULT_CENTER: LatLngTuple = [51.33962, 12.37129] // Leipzig (will be relocated if user gives consent)
 
 type TileTuple = [number, number] // Tile [x,y] as delivered by the REST endpoint
+type TileArray = Array<TileTuple>
+type TileArrayMap = Map<number, TileArray> // zoom -> [tile, tile, ...]
 
 class TileBounds {
     x1: number
@@ -24,40 +27,74 @@ class TileBounds {
         this.x2 = lowerRight.x
         this.y2 = lowerRight.y
     }
-    static fromLatLngBounds(bounds: LatLngBounds): TileBounds {
+    static fromLatLngBounds(bounds: LatLngBounds, zoom: number): TileBounds {
         return new TileBounds(
-            coords2tile([bounds.getNorth(), bounds.getWest()], TILE_ZOOM),
-            coords2tile([bounds.getSouth(), bounds.getEast()], TILE_ZOOM))
+            coords2tile([bounds.getNorth(), bounds.getWest()], zoom),
+            coords2tile([bounds.getSouth(), bounds.getEast()], zoom)
+        )
     }
     contains(that: TileBounds): boolean {
         return this.x1 <= that.x1 && this.y1 <= that.y1 && this.x2 >= that.x2 && this.y2 >= that.y2
     }
 }
 
-let tileCache: Array<TileTuple> = []
-let prevBounds: TileBounds | null = null
-
-async function loadTiles(bounds: TileBounds): Promise<Array<TileTuple>> {
-    const boundsParam = `bounds=${bounds.x1},${bounds.y1},${bounds.x2},${bounds.y2}`
-    const response = await fetch(`${TILES_URL}/${TILE_ZOOM}?${boundsParam}`)
-    return await response.json()
+class TileBoundsMap {
+    map: Map<number, TileBounds>
+    constructor(map: Map<number, TileBounds> | null = null) {
+        this.map = map || new Map<number, TileBounds>()
+    }
+    static fromLatLngBounds(bounds: LatLngBounds): TileBoundsMap {
+        const map = new Map<number, TileBounds>()
+        for (const zoom of TILE_ZOOM_LEVELS) {
+            map.set(zoom, TileBounds.fromLatLngBounds(bounds, zoom))
+        }
+        return new TileBoundsMap(map)
+    }
+    get(zoom: number): TileBounds {
+        const bounds = this.map.get(zoom)
+        if (!bounds) {
+            throw new Error(`Zoom level ${zoom} not available in map (this is a bug`)
+        }
+        return bounds
+    }
+    set(zoom: number, bounds: TileBounds) {
+        this.map.set(zoom, bounds)
+    }
+    contains(bounds: TileBounds, zoom: number): boolean {
+        const thisBounds = this.map.get(zoom)
+        return !!thisBounds && thisBounds.contains(bounds)
+    }
 }
 
-async function loadTilesCached(bounds: TileBounds | null): Promise<Array<TileTuple>> {
+
+// TODO: Could they be managed as React state?
+const tileCache: TileArrayMap = new Map<number, TileArray>()
+const prevBounds: TileBoundsMap = new TileBoundsMap()
+
+async function loadTiles(bounds: TileBounds, zoom: number): Promise<TileArray> {
+    try {
+        const boundsParam = `bounds=${bounds.x1 + 2},${bounds.y1 + 2},${bounds.x2 - 2},${bounds.y2 - 2}`
+        const response = await fetch(`${TILES_URL}/${zoom}?${boundsParam}`)
+        return await response.json()
+    } catch (e) {
+        console.warn('Cannot fetch data from server:', e)
+        return []
+    }
+}
+
+async function loadTileCache(boundsMap: TileBoundsMap | null): Promise<TileArrayMap> {
     // return Promise.resolve([[8755,5460],[8755,5461]])
-    if (bounds) { // Null until the initial Leaflet event
-        if (prevBounds && prevBounds.contains(bounds)) {
-            return tileCache
-        }
-        try {
-            tileCache = await loadTiles(bounds)
-            prevBounds = bounds
-            return tileCache
-        } catch (e) {
-            console.warn('Cannot fetch data from server:', e)
+    if (boundsMap) { // Null until the initial Leaflet event
+        for (const zoom of TILE_ZOOM_LEVELS) {
+            const bounds = boundsMap.get(zoom)
+            if (!prevBounds.contains(bounds, zoom)) {
+                const tiles = await loadTiles(bounds, zoom)
+                tileCache.set(zoom, tiles)
+                prevBounds.set(zoom, bounds)
+            }
         }
     }
-    return []
+    return tileCache
 }
 
 export function App() {
@@ -79,13 +116,9 @@ export function App() {
 
 function LoadContainer() {
     const [location, setLocation] = useState<LatLng | null>(null)
-    const [bounds, setBounds] = useState<TileBounds | null>(null)
+    const [bounds, setBounds] = useState<TileBoundsMap | null>(null)
 
     const map = useMapEvents({
-        click: () => {
-            // console.log('-----> locate ...')
-            map.locate({setView: true, maxZoom: TILE_ZOOM})
-        },
         locationfound: (event) => {
             // console.log('-----> location found:', event)
             const icon = divIcon({
@@ -101,22 +134,22 @@ function LoadContainer() {
         },
         moveend: () => {
             // console.log('-----> moved')
-            setBounds(TileBounds.fromLatLngBounds(map.getBounds()))
+            setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
         },
         zoomend: () => {
             // console.log('-----> zoomed')
-            setBounds(TileBounds.fromLatLngBounds(map.getBounds()))
+            setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
         },
         viewreset: () => {
             // console.log('-----> reset')
-            setBounds(TileBounds.fromLatLngBounds(map.getBounds()))
+            setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
         }
     })
 
     useEffect(() => {
         if (location === null) {
             // console.log('-----> locate ...')
-            map.locate({setView: true, maxZoom: TILE_ZOOM})
+            map.locate({setView: true, maxZoom: 14})
             setLocation(map.getCenter())
         }
     }, [location])
@@ -124,23 +157,36 @@ function LoadContainer() {
     // console.log("-----> PASS with ", bounds)
     return (
         <Suspense fallback={<div>Loading...</div>}>
-            <TileContainer tilesPromise={loadTilesCached(bounds)} />
+            <TileContainer tilesPromise={loadTileCache(bounds)} />
         </Suspense>
     )
 }
 
 type TileContainerProps = {
-    tilesPromise: Promise<Array<TileTuple>>
+    tilesPromise: Promise<TileArrayMap>
 }
 
 function TileContainer({ tilesPromise }: TileContainerProps) {
     const tiles = use(tilesPromise)
+    const overlays = Array.from(tiles, ([zoom, tiles], index) =>
+        <TileOverlay key={index} tiles={tiles} zoom={zoom} pane={index} />
+    )
+    return <div>{...overlays}</div>
+}
+
+type TileOverlayProps = {
+    tiles: TileArray
+    zoom: number
+    pane: number
+}
+
+function TileOverlay({ tiles, zoom, pane }: TileOverlayProps) {
     return (
-        <div>
-            {tiles.map(tuple => Tile.of(tuple[0], tuple[1], TILE_ZOOM)).map((tile, index) =>
+        <Pane name={`pane-${pane}`} style={{ zIndex: 500 + pane }}>
+            {tiles.map(tuple => Tile.of(tuple[0], tuple[1], zoom)).map((tile, index) =>
                 <Rectangle key={index} bounds={tile.bounds()}
-                           pathOptions={{color: 'blue', weight: 0.5, opacity: 0.5}}/>
+                           pathOptions={{color: TILE_ZOOM_COLORS[pane], weight: 0.5, opacity: 0.5}}/>
             )}
-        </div>
-   )
+        </Pane>
+    )
 }
