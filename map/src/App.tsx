@@ -8,7 +8,7 @@ const SERVER_URL = 'http://localhost:2525' // Base URL of the Rust server, use h
 const TILES_URL = `${SERVER_URL}/tiles`
 
 const TILE_ZOOM_LEVELS = [14, 17]
-const TILE_ZOOM_COLORS = ['blue', 'yellow']
+const TILE_ZOOM_COLORS = ['blue', 'green']
 const CROSSHAIR_SIZE = 50
 const DEFAULT_CENTER: LatLngTuple = [51.33962, 12.37129] // Leipzig (will be relocated if user gives consent)
 
@@ -120,28 +120,26 @@ function LoadContainer() {
 
     const map = useMapEvents({
         locationfound: (event) => {
-            // console.log('-----> location found:', event)
             const icon = divIcon({
                 className: 'crosshair-marker',
                 iconSize: [CROSSHAIR_SIZE, CROSSHAIR_SIZE],
                 iconAnchor: [CROSSHAIR_SIZE / 2, CROSSHAIR_SIZE / 2] // Centered
             })
+            setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
             marker(event.latlng, { icon }).addTo(map);
         },
         locationerror: (event) => {
             console.warn(event.message)
+            setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds())) // Display the tile layers anyway
             alert(event.message)
         },
         moveend: () => {
-            // console.log('-----> moved')
             setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
         },
         zoomend: () => {
-            // console.log('-----> zoomed')
             setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
         },
         viewreset: () => {
-            // console.log('-----> reset')
             setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
         }
     })
