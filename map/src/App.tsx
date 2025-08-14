@@ -1,4 +1,4 @@
-import { Suspense, use, useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { divIcon, LatLng, LatLngBounds, LatLngTuple, marker } from 'leaflet'
 import { MapContainer, Pane, Rectangle, TileLayer, useMapEvents } from 'react-leaflet'
 import { coords2tile, Tile, TileNo } from 'tiles-math'
@@ -50,6 +50,9 @@ class TileBoundsMap {
         }
         return new TileBoundsMap(map)
     }
+    shallowCopy(): TileBoundsMap {
+        return new TileBoundsMap(this.map)
+    }
     get(zoom: number): TileBounds {
         const bounds = this.map.get(zoom)
         if (!bounds) {
@@ -66,11 +69,6 @@ class TileBoundsMap {
     }
 }
 
-
-// TODO: Could they be managed as React state?
-const tileCache: TileArrayMap = new Map<number, TileArray>()
-const prevBounds: TileBoundsMap = new TileBoundsMap()
-
 async function loadTiles(bounds: TileBounds, zoom: number): Promise<TileArray> {
     try {
         const boundsParam = `bounds=${bounds.x1 + 2},${bounds.y1 + 2},${bounds.x2 - 2},${bounds.y2 - 2}`
@@ -80,21 +78,6 @@ async function loadTiles(bounds: TileBounds, zoom: number): Promise<TileArray> {
         console.warn('Cannot fetch data from server:', e)
         return []
     }
-}
-
-async function loadTileCache(boundsMap: TileBoundsMap | null): Promise<TileArrayMap> {
-    // return Promise.resolve([[8755,5460],[8755,5461]])
-    if (boundsMap) { // Null until the initial Leaflet event
-        for (const zoom of TILE_ZOOM_LEVELS) {
-            const bounds = boundsMap.get(zoom)
-            if (!prevBounds.contains(bounds, zoom)) {
-                const tiles = await loadTiles(bounds, zoom)
-                tileCache.set(zoom, tiles)
-                prevBounds.set(zoom, bounds)
-            }
-        }
-    }
-    return tileCache
 }
 
 export function App() {
@@ -116,7 +99,9 @@ export function App() {
 
 function LoadContainer() {
     const [location, setLocation] = useState<LatLng | null>(null)
-    const [bounds, setBounds] = useState<TileBoundsMap | null>(null)
+    const [newBounds, setNewBounds] = useState<TileBoundsMap | null>(null)
+    const [maxBounds, setMaxBounds] = useState<TileBoundsMap>(new TileBoundsMap())
+    const [tileCache, setTileCache] = useState<TileArrayMap>(new Map<number, TileArray>())
 
     const map = useMapEvents({
         locationfound: (event) => {
@@ -125,22 +110,20 @@ function LoadContainer() {
                 iconSize: [CROSSHAIR_SIZE, CROSSHAIR_SIZE],
                 iconAnchor: [CROSSHAIR_SIZE / 2, CROSSHAIR_SIZE / 2] // Centered
             })
-            setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
             marker(event.latlng, { icon }).addTo(map);
         },
         locationerror: (event) => {
             console.warn(event.message)
-            setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds())) // Display the tile layers anyway
             alert(event.message)
         },
         moveend: () => {
-            setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
+            setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
         },
         zoomend: () => {
-            setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
+            setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
         },
         viewreset: () => {
-            setBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
+            setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
         }
     })
 
@@ -152,21 +135,49 @@ function LoadContainer() {
         }
     }, [location])
 
+    useEffect(() => {
+        let isCancelled = false
+
+        async function fetchData() {
+            if (newBounds) { // Null until the initial Leaflet event
+                for (const zoom of TILE_ZOOM_LEVELS) {
+                    const bounds = newBounds.get(zoom)
+                    if (!maxBounds.contains(bounds, zoom)) {
+                        const tiles = await loadTiles(bounds, zoom)
+                        if (!isCancelled) {
+                            tileCache.set(zoom, tiles)
+                            maxBounds.set(zoom, bounds)
+                        }
+                    }
+                }
+                if (!isCancelled) {
+                    setTileCache(new Map<number, TileArray>(tileCache)) // Shallow copy
+                    setMaxBounds(maxBounds.shallowCopy())
+                }
+            }
+        }
+
+        fetchData()
+
+        return () => {
+            isCancelled = true;
+        }
+    }, [newBounds])
+
     // console.log("-----> PASS with ", bounds)
     return (
         <Suspense fallback={<div>Loading...</div>}>
-            <TileContainer tilesPromise={loadTileCache(bounds)} />
+            <TileContainer tileCache={tileCache} />
         </Suspense>
     )
 }
 
 type TileContainerProps = {
-    tilesPromise: Promise<TileArrayMap>
+    tileCache: TileArrayMap
 }
 
-function TileContainer({ tilesPromise }: TileContainerProps) {
-    const tiles = use(tilesPromise)
-    const overlays = Array.from(tiles, ([zoom, tiles], index) =>
+function TileContainer({ tileCache }: TileContainerProps) {
+    const overlays = Array.from(tileCache, ([zoom, tiles], index) =>
         <TileOverlay key={index} tiles={tiles} zoom={zoom} pane={index} />
     )
     return <div>{...overlays}</div>
