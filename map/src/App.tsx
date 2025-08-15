@@ -1,16 +1,16 @@
-import { Suspense, useEffect, useState } from 'react'
-import { divIcon, LatLng, LatLngTuple, marker } from 'leaflet'
+import { useEffect, useState } from 'react'
+import { LatLngTuple } from 'leaflet'
 import { MapContainer, Pane, Rectangle, TileLayer, useMapEvents } from 'react-leaflet'
 import { TileBounds, TileBoundsMap } from './TileBounds.ts'
 import { Tile } from 'tiles-math'
 import './App.css'
+import { LocationContainer } from './LocationContainer.tsx'
 
 const SERVER_URL = 'http://localhost:2525' // Base URL of the Rust server, use http://localhost:2525 in dev mode
 const TILES_URL = `${SERVER_URL}/tiles`
 
 const TILE_ZOOM_LEVELS = [14, 17]
 const TILE_ZOOM_COLORS = ['blue', 'green']
-const CROSSHAIR_SIZE = 50
 const DEFAULT_CENTER: LatLngTuple = [51.33962, 12.37129] // Leipzig (will be relocated if user gives consent)
 
 type TileTuple = [number, number] // Tile [x,y] as delivered by the REST endpoint
@@ -41,31 +41,19 @@ export function App() {
                 attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <TileLoadContainer />
+            <LocationContainer />
+            <TileCacheContainer />
         </MapContainer>
     )
 }
 
-function TileLoadContainer() {
-    const [location, setLocation] = useState<LatLng | null>(null)
+function TileCacheContainer() {
     const [newBounds, setNewBounds] = useState<TileBoundsMap | null>(null)
     const [maxBounds, setMaxBounds] = useState<TileBoundsMap>(new TileBoundsMap())
     const [tileCache, setTileCache] = useState<TileArrayMap>(new Map<number, TileArray>())
 
     // React on map events (to determine location and to determine visible map bounds for tile loading)
     const map = useMapEvents({
-        locationfound: (event) => {
-            const icon = divIcon({
-                className: 'crosshair-marker',
-                iconSize: [CROSSHAIR_SIZE, CROSSHAIR_SIZE],
-                iconAnchor: [CROSSHAIR_SIZE / 2, CROSSHAIR_SIZE / 2] // Centered
-            })
-            marker(event.latlng, { icon }).addTo(map);
-        },
-        locationerror: (event) => {
-            console.warn(event.message)
-            alert(event.message)
-        },
         moveend: () => {
             setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds(), TILE_ZOOM_LEVELS))
         },
@@ -76,14 +64,6 @@ function TileLoadContainer() {
             setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds(), TILE_ZOOM_LEVELS))
         }
     })
-
-    // Determine GPS location of map
-    useEffect(() => {
-        if (location === null) {
-            map.locate({setView: true, maxZoom: 14})
-            setLocation(map.getCenter())
-        }
-    }, [location])
 
     // Load (and cache) tiles according to the visible map bounds
     useEffect(() => {
@@ -116,11 +96,7 @@ function TileLoadContainer() {
     }, [newBounds])
 
     // console.log("-----> PASS with ", bounds)
-    return (
-        <Suspense fallback={<div>Loading...</div>}>
-            <TileContainer tileCache={tileCache} />
-        </Suspense>
-    )
+    return <TileContainer tileCache={tileCache} />
 }
 
 type TileContainerProps = {
