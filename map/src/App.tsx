@@ -1,7 +1,8 @@
 import { Suspense, useEffect, useState } from 'react'
-import { divIcon, LatLng, LatLngBounds, LatLngTuple, marker } from 'leaflet'
+import { divIcon, LatLng, LatLngTuple, marker } from 'leaflet'
 import { MapContainer, Pane, Rectangle, TileLayer, useMapEvents } from 'react-leaflet'
-import { coords2tile, Tile, TileNo } from 'tiles-math'
+import { TileBounds, TileBoundsMap } from './TileBounds.ts'
+import { Tile } from 'tiles-math'
 import './App.css'
 
 const SERVER_URL = 'http://localhost:2525' // Base URL of the Rust server, use http://localhost:2525 in dev mode
@@ -16,58 +17,6 @@ type TileTuple = [number, number] // Tile [x,y] as delivered by the REST endpoin
 type TileArray = Array<TileTuple>
 type TileArrayMap = Map<number, TileArray> // zoom -> [tile, tile, ...]
 
-class TileBounds {
-    x1: number
-    y1: number
-    x2: number
-    y2: number
-    constructor(upperLeft: TileNo, lowerRight: TileNo) {
-        this.x1 = upperLeft.x
-        this.y1 = upperLeft.y
-        this.x2 = lowerRight.x
-        this.y2 = lowerRight.y
-    }
-    static fromLatLngBounds(bounds: LatLngBounds, zoom: number): TileBounds {
-        return new TileBounds(
-            coords2tile([bounds.getNorth(), bounds.getWest()], zoom),
-            coords2tile([bounds.getSouth(), bounds.getEast()], zoom)
-        )
-    }
-    contains(that: TileBounds): boolean {
-        return this.x1 <= that.x1 && this.y1 <= that.y1 && this.x2 >= that.x2 && this.y2 >= that.y2
-    }
-}
-
-class TileBoundsMap {
-    map: Map<number, TileBounds>
-    constructor(map: Map<number, TileBounds> | null = null) {
-        this.map = map || new Map<number, TileBounds>()
-    }
-    static fromLatLngBounds(bounds: LatLngBounds): TileBoundsMap {
-        const map = new Map<number, TileBounds>()
-        for (const zoom of TILE_ZOOM_LEVELS) {
-            map.set(zoom, TileBounds.fromLatLngBounds(bounds, zoom))
-        }
-        return new TileBoundsMap(map)
-    }
-    shallowCopy(): TileBoundsMap {
-        return new TileBoundsMap(this.map)
-    }
-    get(zoom: number): TileBounds {
-        const bounds = this.map.get(zoom)
-        if (!bounds) {
-            throw new Error(`Zoom level ${zoom} not available in map (this is a bug`)
-        }
-        return bounds
-    }
-    set(zoom: number, bounds: TileBounds) {
-        this.map.set(zoom, bounds)
-    }
-    contains(bounds: TileBounds, zoom: number): boolean {
-        const thisBounds = this.map.get(zoom)
-        return !!thisBounds && thisBounds.contains(bounds)
-    }
-}
 
 async function loadTiles(bounds: TileBounds, zoom: number): Promise<TileArray> {
     try {
@@ -92,17 +41,18 @@ export function App() {
                 attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <LoadContainer />
+            <TileLoadContainer />
         </MapContainer>
     )
 }
 
-function LoadContainer() {
+function TileLoadContainer() {
     const [location, setLocation] = useState<LatLng | null>(null)
     const [newBounds, setNewBounds] = useState<TileBoundsMap | null>(null)
     const [maxBounds, setMaxBounds] = useState<TileBoundsMap>(new TileBoundsMap())
     const [tileCache, setTileCache] = useState<TileArrayMap>(new Map<number, TileArray>())
 
+    // React on map events (to determine location and to determine visible map bounds for tile loading)
     const map = useMapEvents({
         locationfound: (event) => {
             const icon = divIcon({
@@ -117,24 +67,25 @@ function LoadContainer() {
             alert(event.message)
         },
         moveend: () => {
-            setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
+            setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds(), TILE_ZOOM_LEVELS))
         },
         zoomend: () => {
-            setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
+            setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds(), TILE_ZOOM_LEVELS))
         },
         viewreset: () => {
-            setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds()))
+            setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds(), TILE_ZOOM_LEVELS))
         }
     })
 
+    // Determine GPS location of map
     useEffect(() => {
         if (location === null) {
-            // console.log('-----> locate ...')
             map.locate({setView: true, maxZoom: 14})
             setLocation(map.getCenter())
         }
     }, [location])
 
+    // Load (and cache) tiles according to the visible map bounds
     useEffect(() => {
         let isCancelled = false
 
