@@ -2,16 +2,19 @@ import { useEffect, useState } from 'react'
 import { divIcon, LatLng, marker } from 'leaflet'
 import { useMapEvents } from 'react-leaflet'
 
-const CROSSHAIR_SIZE = 50
+type LocationContainerProps = {
+    crossHairSize: number
+}
 
-export function LocationContainer() {
+/** Puts a crosshair marker on the map for the current GPS location */
+export function LocationContainer({ crossHairSize }: LocationContainerProps) {
     const [location, setLocation] = useState<LatLng | null>(null)
     const map = useMapEvents({
         locationfound: (event) => {
             const icon = divIcon({
                 className: 'crosshair-marker',
-                iconSize: [CROSSHAIR_SIZE, CROSSHAIR_SIZE],
-                iconAnchor: [CROSSHAIR_SIZE / 2, CROSSHAIR_SIZE / 2] // Centered
+                iconSize: [crossHairSize, crossHairSize],
+                iconAnchor: [crossHairSize / 2, crossHairSize / 2] // Centered
             })
             marker(event.latlng, { icon }).addTo(map);
         },
