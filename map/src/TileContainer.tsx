@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { TileBoundsMap } from './TileBounds.ts'
-import { TileArray, TileCache } from './TileCache.ts'
+import { TileCache } from './TileCache.ts'
 import { useMapEvents } from 'react-leaflet'
 import { TileOverlays } from './TileOverlays.tsx'
 import { loadTiles } from './loadTiles.ts'
@@ -14,7 +14,7 @@ type TileContainerProps = {
 export function TileContainer({ tilesUrl, zoomLevels, tileColors }: TileContainerProps) {
     const [newBounds, setNewBounds] = useState<TileBoundsMap | null>(null)
     const [maxBounds, setMaxBounds] = useState<TileBoundsMap>(new TileBoundsMap())
-    const [tileCache, setTileCache] = useState<TileCache>(new Map<number, TileArray>())
+    const [tileCache, setTileCache] = useState<TileCache>(new TileCache())
 
     // React on map events (to determine location and to determine visible map bounds for tile loading)
     const map = useMapEvents({
@@ -53,7 +53,7 @@ export function TileContainer({ tilesUrl, zoomLevels, tileColors }: TileContaine
                     }
                 }
                 if (!isCancelled) {
-                    setTileCache(new Map<number, TileArray>(tileCache)) // Shallow copy
+                    setTileCache(tileCache.shallowCopy()) // Shallow copy
                     setMaxBounds(maxBounds.shallowCopy())
                 }
             }
