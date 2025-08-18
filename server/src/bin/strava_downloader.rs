@@ -9,7 +9,7 @@ use tokio::sync::broadcast;
 use strava_activity_downloader::domain::server_status::ServerStatus;
 use strava_activity_downloader::oauth::oauth_client::OAuthClient;
 use strava_activity_downloader::rest::http_server::spawn_http_server;
-use strava_activity_downloader::rest::rest_paths::{AUTH_CALLBACK, MAP_DIR, STATUS, CONSOLE_DIR};
+use strava_activity_downloader::rest::rest_paths::{AUTH_CALLBACK, TILEMAP_DIR, STATUS, CONSOLE_DIR};
 use strava_activity_downloader::service::activity_service::ActivityService;
 use strava_activity_downloader::service::download_scheduler::spawn_download_scheduler;
 use strava_activity_downloader::state::shared_state::SharedState;
@@ -88,7 +88,7 @@ async fn main() -> Result<(), BoxError>  {
     let addr = format!("{host}:{port}");
     info!("Server listening on http://{addr}");
     let listener = TcpListener::bind(addr).await?;
-    let http_server = spawn_http_server(listener, state.clone(), rx_term2, &CONSOLE_DIR, &MAP_DIR);
+    let http_server = spawn_http_server(listener, state.clone(), rx_term2, &CONSOLE_DIR, &TILEMAP_DIR);
 
     shutdown_signal().await;
     info!("Termination signal received");

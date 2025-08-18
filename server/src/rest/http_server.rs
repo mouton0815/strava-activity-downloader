@@ -19,7 +19,7 @@ pub fn spawn_http_server(
     state: MutexSharedState,
     mut rx_term: Receiver<()>,
     console_dir: &StaticDir,
-    map_dir: &StaticDir) -> JoinHandle<()> {
+    tilemap_dir: &StaticDir) -> JoinHandle<()> {
     info!("Spawn HTTP server");
 
     let cors = CorsLayer::new()
@@ -34,7 +34,7 @@ pub fn spawn_http_server(
         .route(TILES, get(tiles_handler))
         .route("/", get(|| async { Redirect::permanent(console_dir.rest_path) }))
         .nest_service(console_dir.rest_path, ServeDir::new(console_dir.file_path))
-        .nest_service(map_dir.rest_path, ServeDir::new(map_dir.file_path))
+        .nest_service(tilemap_dir.rest_path, ServeDir::new(tilemap_dir.file_path))
         .layer(ServiceBuilder::new().layer(cors))
         .with_state(state);
 

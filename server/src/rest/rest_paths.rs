@@ -11,4 +11,4 @@ pub struct StaticDir {
 }
 
 pub const CONSOLE_DIR: StaticDir = StaticDir{ rest_path: "/console", file_path: "../console/dist" };
-pub const MAP_DIR: StaticDir = StaticDir{ rest_path: "/map", file_path: "../map/dist" };
+pub const TILEMAP_DIR: StaticDir = StaticDir{ rest_path: "/tilemap", file_path: "../tilemap/dist" };
