@@ -9,7 +9,6 @@
 README.md
 Deploy.md
 screenshot.png
-sim/
 
 # Re-include this file:
 !application.yaml

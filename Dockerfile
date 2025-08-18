@@ -1,24 +1,24 @@
 # Stage 1: Build the React console app
-FROM node AS web-builder
-WORKDIR /web
+FROM node AS console-builder
+WORKDIR /console
 
-COPY web/ ./
-RUN npm install
+COPY console/ ./
+RUN npm ci
 RUN npm run build
 
 # Stage 2: Build the React map app
-FROM node AS map-builder
-WORKDIR /map
+FROM node AS tilemap-builder
+WORKDIR /tilemap
 
-COPY map/ ./
-RUN npm install
+COPY tilemap/ ./
+RUN npm ci
 RUN npm run build
 
 # Stage 3: Build the Rust binary
-FROM rust:1.85 AS rust-builder
+FROM rust:1.85 AS server-builder
 
-WORKDIR /app
-COPY . .
+WORKDIR /server
+COPY server/ ./
 
 RUN cargo build --release
 
@@ -26,9 +26,9 @@ RUN cargo build --release
 FROM gcr.io/distroless/cc
 
 # Copy the compiled binary from the builder stages
-COPY --from=web-builder /web/dist /web/dist
-COPY --from=map-builder /map/dist /map/dist
-COPY --from=rust-builder /app/target/release/strava_downloader /strava_downloader
-COPY --from=rust-builder /app/conf/application.yaml /conf/application.yaml
+COPY --from=console-builder /console/dist /console/dist
+COPY --from=tilemap-builder /tilemap/dist /tilemap/dist
+COPY --from=server-builder /server/target/release/strava_downloader /server
+COPY --from=server-builder /server/conf/application.yaml /conf/application.yaml
 
-CMD ["/strava_downloader"]
+CMD ["/server"]
