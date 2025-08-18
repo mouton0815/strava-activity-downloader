@@ -15,7 +15,7 @@ The server can be controlled by a React UI, which is also part of this project.
 It takes care of authenticating the application with Strava, lets you start and stop the downloading,
 and shows the download progress.
 
-<img src="screenshot.png" alt="Screenshot of the web application" style="width:250px;"/>
+<img src="screenshot.png" alt="Screenshot of the console application" style="width:250px;"/>
 
 ## Preconditions
 #### Required Tools
@@ -51,9 +51,9 @@ oauth:
   client_secret: "<your-strava-client-secret>"
 ```
 
-#### Build the Web UI
+#### Build the Console UI
 ```shell
-cd <project>/web
+cd <project>/console
 npm install
 npm run build
 cd ..
@@ -69,26 +69,26 @@ Then point your browser to http://localhost:2525 and start downloading your acti
 
 #### Dev Mode
 
-It is also possible to run the web UI in vite's [preview mode](https://vitejs.dev/guide/cli#vite-preview).
+It is also possible to run the console UI in vite's [preview mode](https://vitejs.dev/guide/cli#vite-preview).
 The preview server runs at port `2020`. To ensure that the Rust server redirects to the vite preview server
 after authenticating with Strava, the `target_url` configured in `conf/application.yaml` should be
 ```yaml
 oauth:
   target_url: "http://localhost:2020" # Redirect to after authentication
 ```
-In addition, the React app needs to fetch the data from an absolute address. In [App.tsx](./web/src/App.tsx) change
+In addition, the React app needs to fetch the data from an absolute address. In [App.tsx](./console/src/App.tsx) change
 ```javascript
 const SERVER_URL = 'http://localhost:2525'
 ```
 Then start the dev server in another shell (tab):
 ```shell
-cd <project>/web
+cd <project>/console
 npm run dev
 ```
 Point your browser to http://localhost:2020.
 
 ## Server API
-Instead of using the web UI, the server can be controlled via REST API.
+Instead of using the console UI, the server can be controlled via REST API.
 For usability, all endpoints use `GET`.
 A browser is only needed for the authorization,
 where Strava redirects to its login and authorization pages.
@@ -101,7 +101,7 @@ starts the authorization with Strava.
 Under the hood, the server performs an [OAuth 2.0 Authorization Code Grant](https://oauth.net/2/grant-types/authorization-code/) flow
 to obtain a Strava token. At the end of the process, the server redirects to
 the URL configured at `oauth.target_url` in `conf/application.yaml`.
-By default, this is the web UI exposed at the root path of the server.
+By default, this is the console UI exposed at the root path of the server.
 
 #### Status
 ```

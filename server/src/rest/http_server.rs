@@ -18,7 +18,7 @@ pub fn spawn_http_server(
     listener: TcpListener,
     state: MutexSharedState,
     mut rx_term: Receiver<()>,
-    web_dir: &StaticDir,
+    console_dir: &StaticDir,
     map_dir: &StaticDir) -> JoinHandle<()> {
     info!("Spawn HTTP server");
 
@@ -32,8 +32,8 @@ pub fn spawn_http_server(
         .route(AUTHORIZE, get(authorize_handler))
         .route(AUTH_CALLBACK, get(callback_handler))
         .route(TILES, get(tiles_handler))
-        .route("/", get(|| async { Redirect::permanent(web_dir.rest_path) }))
-        .nest_service(web_dir.rest_path, ServeDir::new(web_dir.file_path))
+        .route("/", get(|| async { Redirect::permanent(console_dir.rest_path) }))
+        .nest_service(console_dir.rest_path, ServeDir::new(console_dir.file_path))
         .nest_service(map_dir.rest_path, ServeDir::new(map_dir.file_path))
         .layer(ServiceBuilder::new().layer(cors))
         .with_state(state);
