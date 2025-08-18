@@ -1,5 +1,6 @@
 use axum::Router;
 use axum::http::Method;
+use axum::response::Redirect;
 use axum::routing::get;
 use log::{debug, info};
 use tokio::net::TcpListener;
@@ -31,9 +32,10 @@ pub fn spawn_http_server(
         .route(AUTHORIZE, get(authorize_handler))
         .route(AUTH_CALLBACK, get(callback_handler))
         .route(TILES, get(tiles_handler))
-        .layer(ServiceBuilder::new().layer(cors))
+        .route("/", get(|| async { Redirect::permanent(web_dir.rest_path) }))
         .nest_service(web_dir.rest_path, ServeDir::new(web_dir.file_path))
         .nest_service(map_dir.rest_path, ServeDir::new(map_dir.file_path))
+        .layer(ServiceBuilder::new().layer(cors))
         .with_state(state);
 
     tokio::spawn(async move {

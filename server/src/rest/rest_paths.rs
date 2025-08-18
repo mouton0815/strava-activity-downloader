@@ -10,5 +10,5 @@ pub struct StaticDir {
     pub file_path: &'static str
 }
 
-pub const WEB_DIR: StaticDir = StaticDir{ rest_path: "/", file_path: "web/dist" };
-pub const MAP_DIR: StaticDir = StaticDir{ rest_path: "/map", file_path: "map/dist" };
+pub const WEB_DIR: StaticDir = StaticDir{ rest_path: "/console", file_path: "../web/dist" };
+pub const MAP_DIR: StaticDir = StaticDir{ rest_path: "/map", file_path: "../map/dist" };

@@ -35,6 +35,7 @@ You will need values for `Client ID` and `Client Secret` of your API client for 
 
 #### Build the Server
 ```shell
+ce <project>/server
 cargo build
 ```
 
@@ -52,7 +53,7 @@ oauth:
 
 #### Build the Web UI
 ```shell
-cd web
+cd <project>/web
 npm install
 npm run build
 cd ..
@@ -81,7 +82,7 @@ const SERVER_URL = 'http://localhost:2525'
 ```
 Then start the dev server in another shell (tab):
 ```shell
-cd web
+cd <project>/web
 npm run dev
 ```
 Point your browser to http://localhost:2020.
