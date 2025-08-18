@@ -19,4 +19,4 @@ strava:
 
 service:
   data_dir: "data"
-  store_tiles: true
+  store_tiles: false
