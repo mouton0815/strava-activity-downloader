@@ -91,7 +91,7 @@ mod tests {
         service.put_tiles(zoom, activity_id, &tiles).unwrap();
 
         let client = OAuthClient::dummy();
-        let tracks = TrackStorage::new(""); // TODO: Allow disabling track storage
+        let tracks = TrackStorage::new("");
         let (tx_data, _) = broadcast::channel::<ServerStatus>(3);
         let (tx_term, _) = broadcast::channel(1);
         let state = SharedState::new(client, service, tracks, tx_data, tx_term, 0);
