@@ -19,26 +19,28 @@ docker container run \
 
 # Google Cloud
 ```shell
-gcloud config set project activity-server-468119
+gcloud config set project <your-project>
 ```
 
 ```shell
-gcloud storage buckets create gs://mouton0815-activity-bucket --project=activity-server-468119
+gcloud storage buckets create gs://<your-bucket> --project=<your-project>
 ```
 
 ```shell
-gcloud builds submit --tag gcr.io/activity-server-468119/activity-server
+gcloud builds submit --tag gcr.io/<your-project>/activity-server
 ```
 
 ```shell
 gcloud run deploy activity-server \
-  --image gcr.io/activity-server-468119/activity-server \
+  --image gcr.io/<your-project>/activity-server \
   --platform managed \
-  --region europe-west1 \
+  --region <your-region> \
   --allow-unauthenticated \
-  --add-volume=name=activity-volume,type=cloud-storage,bucket=mouton0815-activity-bucket \
+  --add-volume=name=activity-volume,type=cloud-storage,bucket=<your-bucket> \
   --add-volume-mount=volume=activity-volume,mount-path=/app/data \
-  --set-env-vars REDIRECT_URL=https://activity-server-775683106576.europe-west1.run.app \
+  --set-env-vars REDIRECT_URL=<url-assigned-by-gcloud> \
   --set-env-vars DATA_DIR=/app/data \
   --set-env-vars RUST_LOG=info
 ```
+You need to deploy twice in order to obtain the `<url-assigned-by-gcloud>`.
+For the first time, just pass a dummy value.
