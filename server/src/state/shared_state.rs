@@ -9,8 +9,6 @@ use crate::oauth::oauth_client::OAuthClient;
 use crate::service::activity_service::ActivityService;
 use crate::track::track_storage::TrackStorage;
 
-// TODO: Unit tests!
-
 /// State shared between axum handlers and downloader
 pub struct SharedState {
     pub oauth: OAuthClient,
@@ -72,6 +70,7 @@ impl SharedState {
         Ok(ServerStatus::new(authorized, download_state, activity_stats))
     }
 
+    /// Returns the [ActivityStats], either from the cached value or else from the wrapped service.
     async fn get_activity_stats(&mut self) -> Result<ActivityStats, BoxError> {
         match self.activity_stats.as_ref() {
             Some(stats) => Ok(stats.clone()),
@@ -81,5 +80,80 @@ impl SharedState {
                 Ok(activity_stats)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::sync::broadcast;
+    use crate::domain::activity::Activity;
+    use crate::domain::activity_stats::ActivityStats;
+    use crate::domain::server_status::ServerStatus;
+    use crate::oauth::oauth_client::OAuthClient;
+    use crate::service::activity_service::ActivityService;
+    use crate::state::shared_state::{MutexSharedState, SharedState};
+    use crate::track::track_storage::TrackStorage;
+
+    impl SharedState {
+        pub fn dummy(service: ActivityService) -> MutexSharedState {
+            let client = OAuthClient::dummy();
+            let tracks = TrackStorage::new("");
+            let (tx_data, _) = broadcast::channel::<ServerStatus>(1);
+            let (tx_term, _) = broadcast::channel(1);
+            SharedState::new(client, service, tracks, tx_data, tx_term, 0)
+        }
+    }
+
+    #[tokio::test]
+    async fn test_activity_max_time() {
+        let activities = vec![Activity::dummy(5, "2018-02-20T18:02:13Z")];
+        let mut service = ActivityService::new(":memory:", true).unwrap();
+        service.add(&activities).unwrap();
+
+        let state = SharedState::dummy(service);
+
+        let mut guard = state.lock().await;
+        let max_time = guard.get_activity_max_time().await;
+        assert!(max_time.is_ok());
+        assert_eq!(max_time.unwrap(), 1519149733);
+    }
+
+    #[tokio::test]
+    async fn test_merge_stats() {
+        let activities = vec![Activity::dummy(5, "2015-01-01T00:00:00Z")];
+        let mut service = ActivityService::new(":memory:", true).unwrap();
+        service.add(&activities).unwrap();
+
+        let state = SharedState::dummy(service);
+
+        let mut guard = state.lock().await;
+        let new_stats = ActivityStats::new(1, None, Some("2018-02-20T18:02:13Z".to_string()), 0,  None);
+        assert!(guard.get_activity_stats().await.is_ok()); // Force loading stats from service
+        guard.merge_activity_stats(&new_stats);
+
+        let max_time = guard.get_activity_max_time().await;
+        assert!(max_time.is_ok());
+        assert_eq!(max_time.unwrap(), 1519149733);
+    }
+
+    #[tokio::test]
+    async fn test_server_status() {
+        let expected = r#"{"authorized":false,"download_state":"Inactive","activity_stats":{"act_count":2,"act_min_time":"2018-02-20T18:02:13Z","act_max_time":"2020-08-21T00:00:00Z","trk_count":0,"trk_max_time":null}}"#;
+
+        let activities = vec![
+            Activity::dummy(5, "2018-02-20T18:02:13Z"),
+            Activity::dummy(7, "2020-08-21T00:00:00Z")
+        ];
+        let mut service = ActivityService::new(":memory:", true).unwrap();
+        service.add(&activities).unwrap();
+
+        let state = SharedState::dummy(service);
+
+        let mut guard = state.lock().await;
+        let status = guard.get_server_status().await;
+        assert!(status.is_ok());
+        let result = serde_json::to_string::<ServerStatus>(&status.unwrap());
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), expected);
     }
 }

@@ -54,17 +54,13 @@ mod tests {
     use axum::Router;
     use axum::routing::get;
     use axum_test::TestServer;
-    use tokio::sync::broadcast;
     use crate::domain::activity::Activity;
     use crate::domain::map_tile::MapTile;
     use crate::domain::map_zoom::MapZoom;
-    use crate::domain::server_status::ServerStatus;
-    use crate::oauth::oauth_client::OAuthClient;
     use crate::rest::rest_paths::TILES;
     use crate::rest::rest_handlers::tiles_handler;
     use crate::service::activity_service::ActivityService;
     use crate::state::shared_state::SharedState;
-    use crate::track::track_storage::TrackStorage;
 
     #[tokio::test]
     async fn test_tiles() {
@@ -90,11 +86,7 @@ mod tests {
         service.add(&activities).unwrap();
         service.put_tiles(zoom, activity_id, &tiles).unwrap();
 
-        let client = OAuthClient::dummy();
-        let tracks = TrackStorage::new("");
-        let (tx_data, _) = broadcast::channel::<ServerStatus>(3);
-        let (tx_term, _) = broadcast::channel(1);
-        let state = SharedState::new(client, service, tracks, tx_data, tx_term, 0);
+        let state = SharedState::dummy(service);
 
         let router = Router::new()
             .route(TILES, get(tiles_handler))
