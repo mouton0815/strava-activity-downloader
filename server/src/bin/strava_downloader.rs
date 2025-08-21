@@ -59,7 +59,7 @@ async fn main() -> Result<(), BoxError>  {
         config.get_string("oauth.token_url").expect(CONFIG_YAML),
         config.get_string("oauth.target_url").unwrap_or(STATUS.to_string()),
         format!("{redirect_url}{AUTH_CALLBACK}"),
-        scopes)?;
+        scopes);
 
     let base_path = env::var("DATA_DIR") // Environment precedes config
         .unwrap_or_else(|_| config.get_string("service.data_dir")

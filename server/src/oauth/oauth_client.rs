@@ -1,7 +1,3 @@
-// Send is necessary to send errors between threads (needed by axum middleware):
-// https://users.rust-lang.org/t/axum-middleware-trait-bound-issue-when-invoking-a-function-returning-boxed-error-result/100052/4
-// Sync is necessary for From/Into convenience:
-// https://users.rust-lang.org/t/convert-box-dyn-error-to-box-dyn-error-send/48856
 use axum::BoxError;
 use log::{debug, info, warn};
 use oauth2::basic::BasicClient;
@@ -11,16 +7,25 @@ use url::Url;
 use crate::oauth::token;
 use crate::oauth::token::{Bearer, TokenHolder};
 
+// About type BoxError = Box<dyn std::error::Error + Send + Sync>:
+// Send is necessary to send errors between threads (needed by axum middleware):
+// https://users.rust-lang.org/t/axum-middleware-trait-bound-issue-when-invoking-a-function-returning-boxed-error-result/100052/5
+// Sync is necessary for From/Into convenience:
+// https://users.rust-lang.org/t/convert-box-dyn-error-to-box-dyn-error-send/48856
+
 type TokenResult = Result<TokenHolder, BoxError>;
 type UrlResult = Result<String, BoxError>;
 type BearerResult = Result<Option<Bearer>, BoxError>;
 
+/// An OAuth client for the authorization of a *single* user.
+/// Configures a [BasicClient] for the given URLs.
+/// Keeps track on the state and the token, once obtained.
 pub struct OAuthClient {
     client: BasicClient,
     scopes: Vec<String>,
-    state: Option<String>,
-    target: String, // URL to be redirected to after authentication. Can be relative or absolute.
-    token: Option<TokenHolder>,
+    target: String, // URL to be redirected to after authentication – can be relative or absolute
+    state: Option<String>, // Holds the state between an auth-code request and entering the callback
+    token: Option<TokenHolder> // Holds the token issued by the IdP
 }
 
 impl OAuthClient {
@@ -31,16 +36,16 @@ impl OAuthClient {
                target_url: String,
                redirect_url: String,
                scopes: Vec<String>,
-    ) -> Result<Self, BoxError> {
+    ) -> Self {
         let client = BasicClient::new(
             ClientId::new(client_id),
             Some(ClientSecret::new(client_secret.to_string())),
-            AuthUrl::new(auth_url.to_string())?,
-            Some(TokenUrl::new(token_url.to_string())?)
-        ).set_redirect_uri(RedirectUrl::new(redirect_url)?)
+            AuthUrl::new(auth_url.to_string()).unwrap(), // Panic accepted
+            Some(TokenUrl::new(token_url.to_string()).unwrap())
+        ).set_redirect_uri(RedirectUrl::new(redirect_url).unwrap())
             .set_auth_type(AuthType::RequestBody);
 
-        Ok(Self { client, scopes, state: None, target: target_url, token: None })
+        Self { client, scopes, target: target_url, state: None, token: None }
     }
 
     #[allow(dead_code)]
@@ -56,6 +61,8 @@ impl OAuthClient {
         Ok(TokenHolder::new(token))
     }
 
+    /// Constructs and returns the authorization URL for the IdP.
+    /// The caller should then redirect to that URL to start the auth-code flow.
     pub fn authorize_auth_code_grant(&mut self) -> Url {
         // Transform Vec<String> to Vec<Scope>.
         // Note that cloning is needed anyway because Client.add_scopes() moves its argument.
@@ -68,6 +75,10 @@ impl OAuthClient {
         auth_url
     }
 
+    /// A function to be called in the callback handler for the auth-code flow.
+    /// The function exchanges the passed auth code by a token by calling the IdP.
+    /// It returns the target URL (passed to the constructor of this class)
+    /// to be redirected after success.
     pub async fn callback_auth_code_grant(&mut self, code: &str, state: &str) -> UrlResult {
         debug!("Authorized with code {}", code);
         if self.state.is_none() || self.state.as_ref().unwrap() != state {
@@ -102,10 +113,9 @@ impl OAuthClient {
         Ok(TokenHolder::new(token))
     }
 
-    // TODO: Documentation
-    // https://users.rust-lang.org/t/axum-middleware-trait-bound-issue-when-invoking-a-function-returning-boxed-error-result/100052/5
+    /// Returns the previously obtained token or [None] if none was acquired so far.
+    /// It the token is expired, it is refreshed before returning.
     pub async fn get_bearer(&mut self) -> BearerResult {
-        // Ok(Some("xyz".to_string().into()))
         match self.token.as_ref() {
             Some(token_holder) => {
                 if token::is_expired(token_holder) {

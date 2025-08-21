@@ -42,7 +42,7 @@ pub async fn callback_handler(State(state): State<MutexSharedState>, query: Quer
     match guard.oauth.callback_auth_code_grant(&query.code, &query.state).await {
         Ok(uri) => {
             debug!("Redirect to origin URL: {}", uri);
-            Ok(Redirect::temporary(uri.to_string().as_str()))
+            Ok(Redirect::temporary(uri.as_str()))
         }
         Err(_) => {
             Err(StatusCode::UNAUTHORIZED)
