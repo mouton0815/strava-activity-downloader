@@ -1977,6 +1977,7 @@ dependencies = [
  "futures",
  "geo-types",
  "gpx",
+ "humantime",
  "iso8601-timestamp",
  "log",
  "oauth2",

@@ -12,6 +12,7 @@ use tower_http::services::ServeDir;
 use crate::rest::rest_handlers::{status_handler, tiles_handler, toggle_handler};
 use crate::rest::oauth_handlers::{authorize_handler, callback_handler};
 use crate::rest::rest_paths::{AUTH_CALLBACK, AUTHORIZE, StaticDir, STATUS, TILES, TOGGLE};
+use crate::rest::timing_layer::TimingLayer;
 use crate::state::shared_state::MutexSharedState;
 
 pub fn spawn_http_server(
@@ -36,6 +37,7 @@ pub fn spawn_http_server(
         .nest_service(console_dir.rest_path, ServeDir::new(console_dir.file_path))
         .nest_service(tilemap_dir.rest_path, ServeDir::new(tilemap_dir.file_path))
         .layer(ServiceBuilder::new().layer(cors))
+        .layer(ServiceBuilder::new().layer(TimingLayer))
         .with_state(state);
 
     tokio::spawn(async move {
