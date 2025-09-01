@@ -23,7 +23,7 @@ COPY server/ ./
 RUN cargo build --release
 
 # Stage 4: Minimal final image
-FROM gcr.io/distroless/cc
+FROM gcr.io/distroless/cc-debian12
 
 # Copy the compiled binary from the builder stages
 COPY --from=console-builder /console/dist /console/dist
