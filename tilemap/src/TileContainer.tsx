@@ -38,6 +38,7 @@ export function TileContainer({ tilesUrl, zoomLevels, tileColors }: TileContaine
 
     // Load (and cache) tiles according to the visible map bounds
     useEffect(() => {
+        const controller = new AbortController()
         let isCancelled = false
 
         async function fetchData() {
@@ -45,7 +46,7 @@ export function TileContainer({ tilesUrl, zoomLevels, tileColors }: TileContaine
                 for (const zoom of zoomLevels) {
                     const bounds = newBounds.get(zoom)
                     if (!maxBounds.contains(bounds, zoom)) {
-                        const tiles = await loadTiles(tilesUrl, bounds, zoom)
+                        const tiles = await loadTiles(tilesUrl, bounds, zoom, controller.signal)
                         if (!isCancelled) {
                             tileCache.set(zoom, tiles)
                             maxBounds.set(zoom, bounds)
@@ -62,6 +63,7 @@ export function TileContainer({ tilesUrl, zoomLevels, tileColors }: TileContaine
         fetchData()
 
         return () => {
+            controller.abort()
             isCancelled = true;
         }
     }, [newBounds])
