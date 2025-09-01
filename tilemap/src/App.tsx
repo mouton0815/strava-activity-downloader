@@ -12,14 +12,14 @@ const TILE_COLORS = ['blue', 'green'] // Tile colors for the zoom levels
 
 const CROSSHAIR_SIZE = 50
 
-const DEFAULT_CENTER: LatLngTuple = [51.33962, 12.37129] // Leipzig (will be relocated if user gives consent)
+const DEFAULT_CENTER: LatLngTuple = [0.0, 0.0]
 
 export function App() {
     return (
         <MapContainer
             zoomSnap={0.1}
             center={DEFAULT_CENTER}
-            zoom={11}
+            zoom={15}
             scrollWheelZoom={true}
             style={{ height: '100vh', minWidth: '100vw' }}>
             <TileLayer

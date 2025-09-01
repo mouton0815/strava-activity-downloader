@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import { divIcon, LatLng, marker } from 'leaflet'
-import { useMapEvents } from 'react-leaflet'
+import { divIcon, ErrorEvent, LatLng, LocationEvent } from 'leaflet'
+import { Marker, useMap } from 'react-leaflet'
 
 type LocationContainerProps = {
     crossHairSize: number
@@ -8,28 +8,38 @@ type LocationContainerProps = {
 
 /** Puts a crosshair marker on the map for the current GPS location */
 export function LocationContainer({ crossHairSize }: LocationContainerProps) {
-    const [location, setLocation] = useState<LatLng | null>(null)
-    const map = useMapEvents({
-        locationfound: (event) => {
-            const icon = divIcon({
-                className: 'crosshair-marker',
-                iconSize: [crossHairSize, crossHairSize],
-                iconAnchor: [crossHairSize / 2, crossHairSize / 2] // Centered
-            })
-            marker(event.latlng, { icon }).addTo(map);
-        },
-        locationerror: (event) => {
-            console.warn(event.message)
-            alert(event.message)
-        }
+    const [position, setPosition] = useState<LatLng | null>(null)
+    const map = useMap()
+
+    const icon = divIcon({
+        className: 'crosshair-marker',
+        iconSize: [crossHairSize, crossHairSize],
+        iconAnchor: [crossHairSize / 2, crossHairSize / 2] // Centered
     })
 
     useEffect(() => {
-        if (location === null) {
-            map.locate({setView: true, maxZoom: 14})
-            setLocation(map.getCenter())
+        const handleLocationFound = (event: LocationEvent) => {
+            // console.log('-----> Location event', event.latlng)
+            map.panTo(event.latlng) // Pan but keep current zoom
+            setPosition(event.latlng)
         }
-    }, [location])
 
-    return <div />
+        const handleLocationError = (event: ErrorEvent) => {
+            console.warn(event.message)
+        }
+
+        map.on("locationfound", handleLocationFound)
+        map.on("locationerror", handleLocationError)
+        map.locate({ watch: true })
+
+        return () => {
+            map.off("locationfound", handleLocationFound)
+            map.off("locationerror", handleLocationError)
+            map.stopLocate()
+        }
+    }, [map])
+
+    if (!position) return null
+
+    return <Marker position={position} icon={icon} />
 }
