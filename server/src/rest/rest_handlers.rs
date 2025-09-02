@@ -1,9 +1,11 @@
 use std::num::ParseIntError;
+use std::time::Instant;
 use axum::{BoxError, Error, Json};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::Sse;
 use axum::response::sse::Event;
+use axum::http::Uri;
 use axum_macros::debug_handler;
 use futures::Stream;
 use log::{debug, info, warn};
@@ -11,7 +13,6 @@ use serde::Deserialize;
 use tokio::sync::broadcast::Receiver;
 use crate::domain::download_state::DownloadState;
 use crate::domain::server_status::ServerStatus;
-use crate::rest::rest_paths::{STATUS, TILES, TOGGLE};
 use crate::domain::map_tile::MapTile;
 use crate::domain::map_tile_bounds::MapTileBounds;
 use crate::domain::map_zoom::MapZoom;
@@ -32,9 +33,9 @@ fn internal_server_error(error: BoxError) -> StatusCode {
 }
 
 #[debug_handler]
-pub async fn toggle_handler(State(state): State<MutexSharedState>)
+pub async fn toggle_handler(State(state): State<MutexSharedState>, uri: Uri)
     -> Result<Json<DownloadState>, StatusCode> {
-    debug!("Enter {}", TOGGLE);
+    debug!("Enter {uri}");
     let mut guard = state.lock().await;
     match guard.oauth.get_bearer().await.map_err(internal_server_error)? {
         Some(_) => {
@@ -59,9 +60,9 @@ pub async fn status(State(state): State<MutexSharedState>) -> Result<Json<Server
 */
 
 #[debug_handler]
-pub async fn status_handler(State(state): State<MutexSharedState>)
+pub async fn status_handler(State(state): State<MutexSharedState>, uri: Uri)
     -> Result<Sse<impl Stream<Item = Result<Event, Error>>>, StatusCode> {
-    debug!("Enter {}", STATUS);
+    debug!("Enter {uri}");
     let mut receiver = subscribe_and_send_first(&state).await.map_err(internal_server_error)?;
     let mut rx_term = subscribe_term(&state).await;
     let stream = async_stream::stream! {
@@ -86,14 +87,17 @@ pub struct TilesParams {
 }
 
 #[debug_handler]
-pub async fn tiles_handler(State(state): State<MutexSharedState>, Path(zoom): Path<u16>, Query(params): Query<TilesParams>)
+pub async fn tiles_handler(State(state): State<MutexSharedState>, uri: Uri, Path(zoom): Path<u16>, Query(params): Query<TilesParams>)
     -> Result<Json<Vec<MapTile>>, StatusCode> {
-    debug!("Enter {TILES} for level {zoom} with bounds {:?}", params.bounds);
+    debug!("Enter {uri}");
+    let start = Instant::now();
     let zoom = parse_zoom(zoom)?;
     let bounds = parse_bounds(params.bounds)?;
     let mut guard = state.lock().await;
-    let tiles = guard.service.get_tiles(zoom, bounds).map_err(internal_server_error)?;
-    Ok(Json(tiles))
+    let tiles = Json(guard.service.get_tiles(zoom, bounds).map_err(internal_server_error)?);
+    let elapsed = start.elapsed();
+    info!("{uri} took {}", humantime::format_duration(elapsed));
+    Ok(tiles)
 }
 
 fn parse_zoom(zoom: u16) -> Result<MapZoom, StatusCode> {
