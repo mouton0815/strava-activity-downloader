@@ -1,4 +1,6 @@
+use std::time::Instant;
 use log::{debug, trace};
+use humantime::format_duration;
 use rusqlite::{Connection, params, Result, ToSql, Transaction};
 use crate::domain::map_zoom::MapZoom;
 use crate::domain::map_tile::MapTile;
@@ -77,11 +79,11 @@ impl MapTileTable {
             Some(_) => self.get_sql(SELECT_TILES_BOUNDED),
             None => self.get_sql(SELECT_TILES)
         };
-        debug!("Execute\n{sql}");
         let params: &[&dyn ToSql] = match bounds {
             Some(ref bounds) => &[&bounds.x1, &bounds.x2, &bounds.y1, &bounds.y2],
             None => &[]
         };
+        let timer = Instant::now();
         let mut stmt = tx.prepare(&sql)?;
         let tile_iter = stmt.query_map(params, |row| {
             Ok(MapTileRow::new(
@@ -90,6 +92,7 @@ impl MapTileTable {
                 row.get(3)?
             ))
         })?;
+        debug!("Execution took {}:\n{}", format_duration(timer.elapsed()), &sql);
         tile_iter.collect::<Result<MapTileVec, _>>()
     }
 
