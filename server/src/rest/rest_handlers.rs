@@ -1,5 +1,4 @@
 use std::num::ParseIntError;
-use std::time::Instant;
 use axum::{BoxError, Error, Json};
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
@@ -90,14 +89,11 @@ pub struct TilesParams {
 pub async fn tiles_handler(State(state): State<MutexSharedState>, uri: Uri, Path(zoom): Path<u16>, Query(params): Query<TilesParams>)
     -> Result<Json<Vec<MapTile>>, StatusCode> {
     debug!("Enter {uri}");
-    let start = Instant::now();
     let zoom = parse_zoom(zoom)?;
     let bounds = parse_bounds(params.bounds)?;
     let mut guard = state.lock().await;
-    let tiles = Json(guard.service.get_tiles(zoom, bounds).map_err(internal_server_error)?);
-    let elapsed = start.elapsed();
-    info!("{uri} took {}", humantime::format_duration(elapsed));
-    Ok(tiles)
+    let tiles = guard.service.get_tiles(zoom, bounds).map_err(internal_server_error)?;
+    Ok(Json(tiles))
 }
 
 fn parse_zoom(zoom: u16) -> Result<MapZoom, StatusCode> {

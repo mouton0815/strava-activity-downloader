@@ -79,6 +79,7 @@ impl MapTileTable {
             Some(_) => self.get_sql(SELECT_TILES_BOUNDED),
             None => self.get_sql(SELECT_TILES)
         };
+        debug!("Execute\n{sql}");
         let params: &[&dyn ToSql] = match bounds {
             Some(ref bounds) => &[&bounds.x1, &bounds.x2, &bounds.y1, &bounds.y2],
             None => &[]
@@ -92,8 +93,9 @@ impl MapTileTable {
                 row.get(3)?
             ))
         })?;
-        debug!("Execution took {}:\n{}", format_duration(timer.elapsed()), &sql);
-        tile_iter.collect::<Result<MapTileVec, _>>()
+        let results = tile_iter.collect::<Result<MapTileVec, _>>();
+        debug!("Select from {} took {}", self.table_name, format_duration(timer.elapsed()));
+        results
     }
 
     pub fn delete_all(&self, tx: &Transaction) -> Result<usize> {
