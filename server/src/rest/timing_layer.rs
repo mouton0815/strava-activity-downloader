@@ -1,6 +1,7 @@
 use axum::http::Request;
 use std::task::{Context, Poll};
 use std::time::Instant;
+use humantime::format_duration;
 use log::info;
 use tower::{Layer, Service};
 
@@ -34,10 +35,9 @@ impl<S, ReqBody> Service<Request<ReqBody>> for TimingMiddleware<S>
 
     fn call(&mut self, req: Request<ReqBody>) -> Self::Future {
         let path = req.uri().path().to_string();
-        let start = Instant::now();
+        let timer = Instant::now();
         let result = self.inner.call(req);
-        let elapsed = start.elapsed();
-        info!("Request {path} took {}", humantime::format_duration(elapsed));
+        info!("{path} took {}", format_duration(timer.elapsed()));
         result
     }
 }
