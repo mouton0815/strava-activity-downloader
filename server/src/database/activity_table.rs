@@ -1,6 +1,8 @@
 use const_format::concatcp;
 use log::debug;
-use rusqlite::{Connection, OptionalExtension, params, Result, Row, Transaction};
+use sqlx::{query, Result, Row};
+use crate::database::db_executor::DbExecutor;
+use crate::database::db_types::DBRow;
 use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
 use crate::domain::track_store_state::TrackStoreState;
@@ -56,315 +58,305 @@ const SELECT_ACTIVITIES_WITH_TRACK: &str =
     concatcp!(SELECT_ACTIVITIES, " WHERE gpx_fetched = 1 ORDER BY start_date ASC");
 
 const SELECT_ACTIVITY_STATS: &str =
-    "SELECT COUNT(id), MIN(start_date), MAX(start_date) FROM activity";
-
-const SELECT_TRACK_STATS: &str =
-    "SELECT COUNT(id), MAX(start_date) FROM activity where gpx_fetched = 1";
-
+    "SELECT \
+      COUNT(id), \
+      MIN(start_date), \
+      MAX(start_date), \
+      COUNT(id) FILTER (where gpx_fetched = 1), \
+      MAX(start_date) FILTER (where gpx_fetched = 1) \
+    FROM activity";
 
 pub struct ActivityTable;
 
 #[allow(dead_code)]
 impl ActivityTable {
-    pub fn create_table(conn: &Connection) -> Result<()> {
+    pub async fn create_table<'e, E>(executor: E) -> Result<()>
+        where E: DbExecutor<'e> {
         debug!("Execute\n{}", CREATE_ACTIVITY_TABLE);
-        conn.execute(CREATE_ACTIVITY_TABLE, [])?;
+        query(CREATE_ACTIVITY_TABLE).execute(executor).await?;
         Ok(())
     }
 
-    pub fn insert(tx: &Transaction, activity: &Activity) -> Result<()> {
-        Self::execute_for_activity(tx, INSERT_ACTIVITY, activity)
+    pub async fn insert<'e, E>(executor: E, activity: &Activity) -> Result<()>
+        where E: DbExecutor<'e> {
+        Self::execute_for_activity(executor, INSERT_ACTIVITY, activity).await
     }
 
-    pub fn upsert(tx: &Transaction, activity: &Activity) -> Result<()> {
-        Self::execute_for_activity(tx, UPSERT_ACTIVITY, activity)
+    pub async fn upsert<'e, E>(executor: E, activity: &Activity) -> Result<()>
+        where E: DbExecutor<'e> {
+        Self::execute_for_activity(executor, UPSERT_ACTIVITY, activity).await
     }
 
-    pub fn delete(tx: &Transaction, id: u64) -> Result<bool> {
+    pub async fn delete<'e, E>(executor: E, id: u64) -> Result<bool>
+        where E: DbExecutor<'e> {
         debug!("Execute\n{} with: {}", DELETE_ACTIVITY, id);
-        let row_count = tx.execute(DELETE_ACTIVITY, params![id])?;
-        Ok(row_count == 1)
+        let result = query(DELETE_ACTIVITY)
+            .bind(id as i64) // sqlx::sqlite cannot encode u64
+            .execute(executor)
+            .await?;
+        Ok(result.rows_affected() == 1)
     }
 
-    pub fn update_fetched_column(tx: &Transaction, id: u64, state: TrackStoreState) -> Result<bool> {
+    pub async fn update_fetched_column<'e, E>(executor: E, id: u64, state: TrackStoreState) -> Result<bool>
+        where E: DbExecutor<'e> {
         let value = state as i32;
         debug!("Execute\n{} with: {} {}", UPDATE_FETCHED_COLUMN, id, value);
-        let row_count = tx.execute(UPDATE_FETCHED_COLUMN, params![value, id])?;
-        Ok(row_count == 1)
+        let result = query(UPDATE_FETCHED_COLUMN)
+            .bind(value)
+            .bind(id as i64)
+            .execute(executor)
+            .await?;
+        Ok(result.rows_affected() == 1)
     }
 
-    pub fn select_all(tx: &Transaction) -> Result<ActivityVec> {
+    pub async fn select_all<'e, E>(executor: E) -> Result<ActivityVec>
+        where E: DbExecutor<'e> {
         debug!("Execute\n{}", SELECT_ACTIVITIES);
-        let mut stmt = tx.prepare(SELECT_ACTIVITIES)?;
-        let activity_iter = stmt.query_map([], |row| {
-            Self::row_to_activity(row)
-        })?;
-        activity_iter.collect::<Result<ActivityVec, _>>()
+        query(SELECT_ACTIVITIES)
+            .map(|row: DBRow| Self::row_to_activity(&row))
+            .fetch_all(executor)
+            .await
     }
 
-    pub fn select_by_id(tx: &Transaction, id: u64) -> Result<Option<Activity>> {
+    pub async fn select_by_id<'e, E>(executor: E, id: u64) -> Result<Option<Activity>>
+        where E: DbExecutor<'e> {
         debug!("Execute\n{} with: {}", SELECT_ACTIVITY, id);
-        let mut stmt = tx.prepare(SELECT_ACTIVITY)?;
-        stmt.query_row([id], |row | {
-            Self::row_to_activity(row)
-        }).optional()
+        query(SELECT_ACTIVITY)
+            .bind(id as i64)
+            .map(|row: DBRow| Self::row_to_activity(&row))
+            .fetch_optional(executor)
+            .await
     }
 
-    pub fn select_all_with_track(tx: &Transaction) -> Result<ActivityVec> {
+    pub async fn select_all_with_track<'e, E>(executor: E) -> Result<ActivityVec>
+        where E: DbExecutor<'e> {
         debug!("Execute\n{}", SELECT_ACTIVITIES_WITH_TRACK);
-        let mut stmt = tx.prepare(SELECT_ACTIVITIES_WITH_TRACK)?;
-        let activity_iter = stmt.query_map([], |row| {
-            Self::row_to_activity(row)
-        })?;
-        activity_iter.collect::<Result<ActivityVec, _>>()
+        query(SELECT_ACTIVITIES_WITH_TRACK)
+            .map(|row: DBRow| Self::row_to_activity(&row))
+            .fetch_all(executor)
+            .await
     }
 
-    pub fn select_earliest_without_track(tx: &Transaction) -> Result<Option<Activity>> {
+    pub async fn select_earliest_without_track<'e, E>(executor: E) -> Result<Option<Activity>>
+        where E: DbExecutor<'e> {
         debug!("Execute\n{}", SELECT_EARLIEST_ACTIVITY_WITHOUT_TRACK);
-        let mut stmt = tx.prepare(SELECT_EARLIEST_ACTIVITY_WITHOUT_TRACK)?;
-        stmt.query_row([], |row | {
-            Self::row_to_activity(row)
-        }).optional()
+        query(SELECT_EARLIEST_ACTIVITY_WITHOUT_TRACK)
+            .map(|row: DBRow| Self::row_to_activity(&row))
+            .fetch_optional(executor)
+            .await
     }
 
-    pub fn select_stats(tx: &Transaction) -> Result<ActivityStats> {
-        debug!("Execute\n{}", SELECT_ACTIVITY_STATS);
-        let mut stmt = tx.prepare(SELECT_ACTIVITY_STATS)?;
-        let (act_cnt, act_min, act_max) = stmt.query_row([], |row | {
-            let act_cnt : u32 = row.get(0)?;
-            let act_min : Option<String> = row.get(1)?;
-            let act_max : Option<String> = row.get(2)?;
-            Ok((act_cnt, act_min, act_max))
-        })?;
-        debug!("Execute\n{}", SELECT_TRACK_STATS);
-        let mut stmt = tx.prepare(SELECT_TRACK_STATS)?;
-        let (trk_cnt, trk_max) = stmt.query_row([], |row | {
-            let trk_cnt : u32 = row.get(0)?;
-            let trk_max : Option<String> = row.get(1)?;
-            Ok((trk_cnt, trk_max))
-        })?;
-        Ok(ActivityStats::new(act_cnt, act_min, act_max, trk_cnt, trk_max))
+     pub async fn select_stats<'e, E>(executor: E) -> Result<ActivityStats>
+         where E: DbExecutor<'e> {
+         debug!("Execute\n{}", SELECT_ACTIVITY_STATS);
+         query(SELECT_ACTIVITY_STATS)
+             .map(|row: DBRow| {
+                 let act_cnt : u32 = row.get(0);
+                 let act_min : Option<String> = row.get(1);
+                 let act_max : Option<String> = row.get(2);
+                 let trk_cnt: u32 = row.get(3);
+                 let trk_max: Option<String> = row.get(4);
+                 ActivityStats::new(act_cnt, act_min, act_max, trk_cnt, trk_max)
+             })
+             .fetch_one(executor)
+             .await
     }
 
-    fn execute_for_activity(tx: &Transaction, query: &str, activity: &Activity) -> Result<()> {
-        debug!("Execute\n{}\nwith: {:?}", query, activity);
+    async fn execute_for_activity<'e, E>(executor: E, sql: &str, activity: &Activity) -> Result<()>
+        where E: DbExecutor<'e> {
+        debug!("Execute\n{}\nwith: {:?}", sql, activity);
         // Because sqlite does not support DECIMAL and stores FLOATs with many digits after the
         // dot (https://www.sqlite.org/floatingpoint.html), we need to convert the numbers to int.
         // The inverse operations are done by row_to_activity() below.
-        let dist_multiplied = (activity.distance * 10.0) as u64;
-        let speed_multiplied = (activity.average_speed * 1000.0) as u64;
-        let elev_multiplied = (activity.total_elevation_gain * 10.0) as u64;
-        let values = params![
-            activity.id, activity.name, activity.sport_type, activity.start_date, dist_multiplied,
-            activity.moving_time, elev_multiplied, speed_multiplied, activity.kudos_count
-        ];
-        tx.execute(query, values).map(|_| ()) // Ignore returned row count
+        query(sql)
+            .bind(activity.id as i64) // sqlx::sqlite cannot encode u64
+            .bind(activity.name.clone())
+            .bind(activity.sport_type.clone())
+            .bind(activity.start_date.clone())
+            .bind((activity.distance * 10.0) as i64)
+            .bind(activity.moving_time as i64)
+            .bind((activity.total_elevation_gain * 10.0) as i64)
+            .bind((activity.average_speed * 1000.0) as i64)
+            .bind(activity.kudos_count)
+            .execute(executor)
+            .await
+            .map(|_| ()) // Ignore returned row count
     }
 
-    fn row_to_activity(row: &Row) -> Result<Activity> {
+    fn row_to_activity(row: &DBRow) -> Activity {
         // Reverse the conversion of floats to integers done in function upsert:
-        Ok(Activity {
-            id: row.get(0)?,
-            name: row.get(1)?,
-            sport_type: row.get(2)?,
-            start_date: row.get(3)?,
-            distance: (row.get::<_, u64>(4)? as f32 / 10.0),
-            moving_time: row.get(5)?,
-            total_elevation_gain: (row.get::<_, u64>(6)? as f32 / 10.0),
-            average_speed: (row.get::<_, u64>(7)? as f32 / 1000.0),
-            kudos_count: row.get(8)?
-        })
+        Activity {
+            id: row.get(0),
+            name: row.get(1),
+            sport_type: row.get(2),
+            start_date: row.get(3),
+            distance: (row.get::<i64, _>(4) as f32 / 10.0),
+            moving_time: row.get(5),
+            total_elevation_gain: (row.get::<i64, _>(6) as f32 / 10.0),
+            average_speed: (row.get::<i64, _>(7) as f32 / 1000.0),
+            kudos_count: row.get(8)
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use rusqlite::Connection;
     use crate::database::activity_table::ActivityTable;
+    use crate::database::db_types::DBPool;
     use crate::domain::activity::Activity;
     use crate::domain::activity_stats::ActivityStats;
     use crate::domain::track_store_state::TrackStoreState;
 
-    #[test]
-    fn test_insert() {
+    #[tokio::test]
+    async fn test_insert() {
         let activity1 = Activity::dummy(1, "foo");
         let activity2 = Activity::dummy(2, "bar");
         let activity3 = Activity::dummy(1, "baz");
 
-        let mut conn = create_connection_and_table();
-        let tx = conn.transaction().unwrap();
-        assert!(ActivityTable::insert(&tx, &activity1).is_ok());
-        assert!(ActivityTable::insert(&tx, &activity2).is_ok());
-        assert!(ActivityTable::insert(&tx, &activity3).is_err()); // activity3 collides with activity1
-        assert!(tx.commit().is_ok());
+        let pool = create_connection_and_table().await;
+        assert!(ActivityTable::insert(&pool, &activity1).await.is_ok());
+        assert!(ActivityTable::insert(&pool, &activity2).await.is_ok());
+        assert!(ActivityTable::insert(&pool, &activity3).await.is_err()); // activity3 collides with activity1
 
         let ref_activities = [&activity1, &activity2];
-        check_results(&mut conn, &ref_activities);
-        check_single_result(&mut conn, ref_activities[0]);
-        check_single_result(&mut conn, ref_activities[1]);
+        check_results(&pool, &ref_activities).await;
+        check_single_result(&pool, ref_activities[0]).await;
+        check_single_result(&pool, ref_activities[1]).await;
     }
 
-    #[test]
-    fn test_upsert() {
+    #[tokio::test]
+    async fn test_upsert() {
         let activity1 = Activity::dummy(1, "foo");
         let activity2 = Activity::dummy(2, "bar");
         let activity3 = Activity::dummy(1, "baz");
 
-        let mut conn = create_connection_and_table();
-        let tx = conn.transaction().unwrap();
-        assert!(ActivityTable::upsert(&tx, &activity1).is_ok());
-        assert!(ActivityTable::upsert(&tx, &activity2).is_ok());
-        assert!(ActivityTable::upsert(&tx, &activity3).is_ok()); // activity3 overwrites activity1
-        assert!(tx.commit().is_ok());
+        let pool = create_connection_and_table().await;
+        assert!(ActivityTable::upsert(&pool, &activity1).await.is_ok());
+        assert!(ActivityTable::upsert(&pool, &activity2).await.is_ok());
+        assert!(ActivityTable::upsert(&pool, &activity3).await.is_ok()); // activity3 overwrites activity1
 
         let ref_activities = [&activity3, &activity2];
-        check_results(&mut conn, &ref_activities);
-        check_single_result(&mut conn, ref_activities[0]);
-        check_single_result(&mut conn, ref_activities[1]);
+        check_results(&pool, &ref_activities).await;
+        check_single_result(&pool, ref_activities[0]).await;
+        check_single_result(&pool, ref_activities[1]).await;
     }
 
-    #[test]
-    fn test_delete() {
+    #[tokio::test]
+    async fn test_delete() {
         let activity = Activity::dummy(1, "n/a");
 
-        let mut conn = create_connection_and_table();
-        let tx = conn.transaction().unwrap();
-        assert!(ActivityTable::upsert(&tx, &activity).is_ok());
-        let result = ActivityTable::delete(&tx, 1);
+        let pool = create_connection_and_table().await;
+        assert!(ActivityTable::upsert(&pool, &activity).await.is_ok());
+        let result = ActivityTable::delete(&pool, 1).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), true);
-        assert!(tx.commit().is_ok());
 
-        check_results(&mut conn, &[]);
+        check_results(&pool, &[]).await;
     }
 
-    #[test]
-    fn test_delete_missing() {
-        let mut conn = create_connection_and_table();
-        let tx = conn.transaction().unwrap();
-        let result = ActivityTable::delete(&tx, 1);
+    #[tokio::test]
+    async fn test_delete_missing() {
+        let pool = create_connection_and_table().await;
+        let result = ActivityTable::delete(&pool, 1).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false);
-        assert!(tx.commit().is_ok());
     }
 
-    #[test]
-    fn test_update_fetched_column() {
-        let mut conn = create_connection_and_table();
-        let tx = conn.transaction().unwrap();
-        assert!(ActivityTable::insert(&tx, &Activity::dummy(1, "foo")).is_ok());
-        let result = ActivityTable::update_fetched_column(&tx, 1, TrackStoreState::Stored);
+    #[tokio::test]
+    async fn test_update_fetched_column() {
+        let pool = create_connection_and_table().await;
+        assert!(ActivityTable::insert(&pool, &Activity::dummy(1, "foo")).await.is_ok());
+        let result = ActivityTable::update_fetched_column(&pool, 1, TrackStoreState::Stored).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), true);
-        assert!(tx.commit().is_ok());
     }
 
-    #[test]
-    fn test_update_fetched_column_missing() {
-        let mut conn = create_connection_and_table();
-        let tx = conn.transaction().unwrap();
-        let result = ActivityTable::update_fetched_column(&tx, 1, TrackStoreState::Stored);
+    #[tokio::test]
+    async fn test_update_fetched_column_missing() {
+        let pool = create_connection_and_table().await;
+        let result = ActivityTable::update_fetched_column(&pool, 1, TrackStoreState::Stored).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), false);
-        assert!(tx.commit().is_ok());
     }
 
-    #[test]
-    fn test_earliest_without_track() {
+    #[tokio::test]
+    async fn test_earliest_without_track() {
         let activity1 = Activity::dummy(1, "2018-02-20T18:02:13Z");
         let activity2 = Activity::dummy(2, "2018-02-20T18:02:12Z");
         let activity3 = Activity::dummy(3, "2018-02-20T18:02:11Z");
 
-        let mut conn = create_connection_and_table();
-        let tx = conn.transaction().unwrap();
-        ActivityTable::upsert(&tx, &activity1).unwrap();
-        ActivityTable::upsert(&tx, &activity2).unwrap();
-        ActivityTable::upsert(&tx, &activity3).unwrap();
-        ActivityTable::update_fetched_column(&tx, 3, TrackStoreState::Stored).unwrap(); // Earliest activity already has a track
-        ActivityTable::update_fetched_column(&tx, 2, TrackStoreState::Missing).unwrap(); // Same for missing track
+        let pool = create_connection_and_table().await;
+        ActivityTable::upsert(&pool, &activity1).await.unwrap();
+        ActivityTable::upsert(&pool, &activity2).await.unwrap();
+        ActivityTable::upsert(&pool, &activity3).await.unwrap();
+        ActivityTable::update_fetched_column(&pool, 3, TrackStoreState::Stored).await.unwrap(); // Earliest activity already has a track
+        ActivityTable::update_fetched_column(&pool, 2, TrackStoreState::Missing).await.unwrap(); // Same for missing track
 
-        let result = ActivityTable::select_earliest_without_track(&tx);
+        let result = ActivityTable::select_earliest_without_track(&pool).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), Some(activity1));
-        assert!(tx.commit().is_ok());
     }
 
-    #[test]
-    fn test_earliest_without_track_missing() {
-        let mut conn = create_connection_and_table();
-        let tx = conn.transaction().unwrap();
-
-        let result = ActivityTable::select_earliest_without_track(&tx);
+    #[tokio::test]
+    async fn test_earliest_without_track_missing() {
+        let pool = create_connection_and_table().await;
+        let result = ActivityTable::select_earliest_without_track(&pool).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), None);
-        assert!(tx.commit().is_ok());
     }
 
-    #[test]
-    fn test_all_with_track() {
+    #[tokio::test]
+    async fn test_all_with_track() {
         // Note: Inverse timely order:
         let activity1 = Activity::dummy(3, "2018-02-20T18:02:15Z");
         let activity2 = Activity::dummy(5, "2018-02-20T18:02:13Z");
         let activity3 = Activity::dummy(7, "2018-02-20T18:02:11Z");
 
-        let mut conn = create_connection_and_table();
-        let tx = conn.transaction().unwrap();
-        ActivityTable::upsert(&tx, &activity1).unwrap();
-        ActivityTable::upsert(&tx, &activity2).unwrap();
-        ActivityTable::upsert(&tx, &activity3).unwrap();
-        ActivityTable::update_fetched_column(&tx, 3, TrackStoreState::Stored).unwrap();
-        ActivityTable::update_fetched_column(&tx, 7, TrackStoreState::Stored).unwrap();
+        let pool = create_connection_and_table().await;
+        ActivityTable::upsert(&pool, &activity1).await.unwrap();
+        ActivityTable::upsert(&pool, &activity2).await.unwrap();
+        ActivityTable::upsert(&pool, &activity3).await.unwrap();
+        ActivityTable::update_fetched_column(&pool, 3, TrackStoreState::Stored).await.unwrap();
+        ActivityTable::update_fetched_column(&pool, 7, TrackStoreState::Stored).await.unwrap();
 
-        let result = ActivityTable::select_all_with_track(&tx);
+        let result = ActivityTable::select_all_with_track(&pool).await;
         assert!(result.is_ok());
         assert_eq!(result.unwrap(), vec![activity3, activity1]);
-        assert!(tx.commit().is_ok());
     }
 
-    #[test]
-    fn test_select_stats() {
-        let mut conn = create_connection_and_table();
-        let tx = conn.transaction().unwrap();
-        ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:13Z")).unwrap();
-        ActivityTable::upsert(&tx, &Activity::dummy(3, "2018-02-20T18:02:15Z")).unwrap();
-        ActivityTable::upsert(&tx, &Activity::dummy(2, "2018-02-20T18:02:12Z")).unwrap();
-        ActivityTable::upsert(&tx, &Activity::dummy(1, "2018-02-20T18:02:11Z")).unwrap(); // Note: ID overwrite
-        ActivityTable::update_fetched_column(&tx, 1, TrackStoreState::Stored).unwrap();
+    #[tokio::test]
+    async fn test_select_stats() {
+        let pool = create_connection_and_table().await;
+        let mut tx = pool.begin().await.unwrap();
+        ActivityTable::upsert(&pool, &Activity::dummy(1, "2018-02-20T18:02:13Z")).await.unwrap();
+        ActivityTable::upsert(&pool, &Activity::dummy(3, "2018-02-20T18:02:15Z")).await.unwrap();
+        ActivityTable::upsert(&pool, &Activity::dummy(2, "2018-02-20T18:02:12Z")).await.unwrap();
+        ActivityTable::upsert(&pool, &Activity::dummy(1, "2018-02-20T18:02:11Z")).await.unwrap(); // Note: ID overwrite
+        ActivityTable::update_fetched_column(&pool, 1, TrackStoreState::Stored).await.unwrap();
 
-        let result = ActivityTable::select_stats(&tx);
+        let result = ActivityTable::select_stats(&mut *tx).await;
         assert!(result.is_ok());
         let reference = ActivityStats::new(3, Some("2018-02-20T18:02:11Z".to_string()), Some("2018-02-20T18:02:15Z".to_string()), 1, Some("2018-02-20T18:02:11Z".to_string()));
         assert_eq!(result.unwrap(), reference);
     }
 
-    #[test]
-    fn test_select_stats_missing() {
-        let mut conn = create_connection_and_table();
-        let tx = conn.transaction().unwrap();
-
-        let result = ActivityTable::select_stats(&tx);
-        match result {
-            Ok(_) => {}
-            Err(e) => println!("{:?}", e)
-        }
-        //assert!(result.is_ok());
-        //assert_eq!(result.unwrap(), ActivityStats::new(0, 0, None, None));
+    #[tokio::test]
+    async fn test_select_stats_missing() {
+        let pool = create_connection_and_table().await;
+        let result = ActivityTable::select_stats(&pool).await;
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), ActivityStats::new(0, None, None, 0, None));
     }
 
-    fn create_connection_and_table() -> Connection {
-        let conn = Connection::open(":memory:");
-        assert!(conn.is_ok());
-        let conn = conn.unwrap();
-        assert!(ActivityTable::create_table(&conn).is_ok());
-        conn
+    async fn create_connection_and_table() -> DBPool {
+        let pool = DBPool::connect("sqlite::memory:").await.unwrap();
+        ActivityTable::create_table(&pool).await.unwrap();
+        pool
     }
 
-    fn check_results(conn: &mut Connection, ref_activities: &[&Activity]) {
-        let tx = conn.transaction().unwrap();
-
-        let activities = ActivityTable::select_all(&tx);
+    async fn check_results(pool: &DBPool, ref_activities: &[&Activity]) {
+        let activities = ActivityTable::select_all(pool).await;
         assert!(activities.is_ok());
-        assert!(tx.commit().is_ok());
 
         let activities = activities.unwrap();
         assert_eq!(activities.len(), ref_activities.len());
@@ -375,12 +367,9 @@ mod tests {
         }
     }
 
-    fn check_single_result(conn: &mut Connection, ref_activity: &Activity) {
-        let tx = conn.transaction().unwrap();
-
-        let activity = ActivityTable::select_by_id(&tx, ref_activity.id);
+    async fn check_single_result(pool: &DBPool, ref_activity: &Activity) {
+        let activity = ActivityTable::select_by_id(pool, ref_activity.id).await;
         assert!(activity.is_ok());
-        assert!(tx.commit().is_ok());
 
         let activity = activity.unwrap();
         assert!(activity.is_some());

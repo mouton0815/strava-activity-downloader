@@ -67,7 +67,7 @@ mod tests {
     #[tokio::test]
     async fn test_tiles() {
         let tiles: Vec<MapTile> = vec![MapTile::new(1, 1), MapTile::new(2, 2)];
-        let server = create_tiles_server(&tiles, MapZoom::Level14);
+        let server = create_tiles_server(&tiles, MapZoom::Level14).await;
         let result = server.get("/tiles/14").await.json::<Vec<MapTile>>();
         assert_eq!(result, tiles);
     }
@@ -75,18 +75,18 @@ mod tests {
     #[tokio::test]
     async fn test_tiles_bounds() {
         let tiles: Vec<MapTile> = vec![MapTile::new(1, 1), MapTile::new(2, 2)];
-        let server = create_tiles_server(&tiles, MapZoom::Level14);
+        let server = create_tiles_server(&tiles, MapZoom::Level14).await;
         let result1 = server.get("/tiles/14?bounds=2,2,2,2").await.json::<Vec<MapTile>>();
         assert_eq!(result1, vec![MapTile::new(2, 2)]);
     }
 
-    fn create_tiles_server(tiles: &Vec<MapTile>, zoom: MapZoom) -> TestServer {
+    async fn create_tiles_server(tiles: &Vec<MapTile>, zoom: MapZoom) -> TestServer {
         let activity_id = 5;
         let activities = vec![Activity::dummy(activity_id, "2018-02-20T18:02:13Z")];
 
-        let mut service = ActivityService::new(":memory:", true).unwrap();
-        service.add(&activities).unwrap();
-        service.put_tiles(zoom, activity_id, &tiles).unwrap();
+        let mut service = ActivityService::new(":memory:", true).await.unwrap();
+        service.add(&activities).await.unwrap();
+        service.put_tiles(zoom, activity_id, &tiles).await.unwrap();
 
         let state = SharedState::dummy(service);
 

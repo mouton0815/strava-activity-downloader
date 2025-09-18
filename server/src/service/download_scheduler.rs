@@ -37,7 +37,7 @@ async fn get_query_params(state: &MutexSharedState) -> Result<(i64, i64), BoxErr
 
 async fn add_activities(state: &MutexSharedState, activities: &ActivityVec) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    let activity_stats = guard.service.add(activities)?;
+    let activity_stats = guard.service.add(activities).await?;
     guard.merge_activity_stats(&activity_stats);
     Ok(())
 }
@@ -53,7 +53,7 @@ async fn send_status_event(state: &MutexSharedState) -> Result<(), BoxError> {
 
 async fn get_earliest_activity_without_track(state: &MutexSharedState) -> Result<Option<Activity>, BoxError> {
     let mut guard = state.lock().await;
-    guard.service.get_earliest_without_track()
+    guard.service.get_earliest_without_track().await
 }
 
 async fn store_track(state: &MutexSharedState, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
@@ -61,9 +61,9 @@ async fn store_track(state: &MutexSharedState, activity: &Activity, stream: &Act
     // Write the GPX file ...
     guard.tracks.write(activity, stream)?;
     // ... then mark the fetch status of the corresponding activity
-    guard.service.mark_fetched(activity, TrackStoreState::Stored)?;
+    guard.service.mark_fetched(activity, TrackStoreState::Stored).await?;
     // ... next (and optionally) compute the tiles and store them
-    guard.service.store_tiles(activity, stream)?;
+    guard.service.store_tiles(activity, stream).await?;
     // ... finally increase the in-memory stats to be sent to the UI
     guard.merge_activity_stats(&ActivityStats::new(0, None, None, 1, Some(activity.start_date.clone())));
     Ok(())
@@ -71,7 +71,7 @@ async fn store_track(state: &MutexSharedState, activity: &Activity, stream: &Act
 
 async fn mark_track_missing(state: &MutexSharedState, activity: &Activity) -> Result<(), BoxError> {
     let mut guard = state.lock().await;
-    guard.service.mark_fetched(activity, TrackStoreState::Missing)?;
+    guard.service.mark_fetched(activity, TrackStoreState::Missing).await?;
     Ok(())
 }
 

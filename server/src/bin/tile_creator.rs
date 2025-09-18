@@ -6,19 +6,20 @@ const BASE_DIR: &str = "data";
 
 const ACTIVITY_DB: &str = "activity.db";
 
-fn main() -> Result<(), BoxError> {
+#[tokio::main]
+async fn main() -> Result<(), BoxError> {
     env_logger::init();
     println!("Generate tiles for older activities (use RUST_LOG=debug for more information)");
     let tracks = TrackStorage::new(BASE_DIR);
-    let mut service = ActivityService::new(ACTIVITY_DB, true)?;
+    let mut service = ActivityService::new(ACTIVITY_DB, true).await?;
     // Delete all existing tiles (otherwise the ID of the first activity would be wrong)
-    service.delete_all_tiles()?;
+    service.delete_all_tiles().await?;
     // Iterate over all activities with tracks by increasing start_date
-    for activity in service.get_all_with_track()? {
+    for activity in service.get_all_with_track().await? {
         // Load the corresponding track GPX file
         let stream = tracks.read(&activity)?;
         // Generate and write the tiles for the corresponding activity
-        service.store_tiles(&activity, &stream)?;
+        service.store_tiles(&activity, &stream).await?;
     }
     Ok(())
 }

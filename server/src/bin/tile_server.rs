@@ -31,7 +31,7 @@ async fn main() -> Result<(), BoxError> {
     env_logger::init();
 
     //let service = Arc::new(Mutex::new(ActivityService::new(ACTIVITY_DB, true)?));
-    let service = ActivityService::new(ACTIVITY_DB, true)?;
+    let service = ActivityService::new(ACTIVITY_DB, true).await?;
     let state = Arc::new(Mutex::new(service));
 
     let cors = CorsLayer::new()
@@ -64,7 +64,7 @@ async fn tiles(State(state): State<MutexService>, Path(zoom): Path<u16>) -> Resu
         _ => return Err(StatusCode::BAD_REQUEST)
     };
     let mut guard = state.lock().await;
-    let tiles = guard.get_tiles(zoom, None).map_err(error_to_status)?;
+    let tiles = guard.get_tiles(zoom, None).await.map_err(error_to_status)?;
     Ok(Json(tiles))
 }
 

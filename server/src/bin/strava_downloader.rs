@@ -69,7 +69,7 @@ async fn main() -> Result<(), BoxError>  {
 
     let db_path = format!("{base_path}/{ACTIVITY_DB}");
     let store_tiles = config.get_bool("service.store_tiles").unwrap_or(false);
-    let service = ActivityService::new(db_path.as_str(), store_tiles)?;
+    let service = ActivityService::new(db_path.as_str(), store_tiles).await?;
 
     let tracks = TrackStorage::new(base_path.as_str());
 

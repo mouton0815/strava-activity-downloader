@@ -1,7 +1,9 @@
 use std::time::Instant;
 use log::{debug, trace};
 use humantime::format_duration;
-use rusqlite::{Connection, params, Result, ToSql, Transaction};
+use sqlx::{query, Result, Row};
+use crate::database::db_executor::DbExecutor;
+use crate::database::db_types::DBRow;
 use crate::domain::map_zoom::MapZoom;
 use crate::domain::map_tile::MapTile;
 use crate::domain::map_tile_bounds::MapTileBounds;
@@ -60,48 +62,62 @@ impl MapTileTable {
         Self { table_name }
     }
 
-    pub fn create_table(&self, conn: &Connection) -> Result<()> {
+    pub async fn create_table<'e, E>(&self, executor: E) -> Result<()>
+        where E: DbExecutor<'e> {
         let sql = self.get_sql(CREATE_TILE_TABLE);
         debug!("Execute\n{sql}");
-        conn.execute(&sql, [])?;
+        query(sql.as_str()).execute(executor).await?;
         Ok(())
     }
 
-    pub fn upsert(&self, tx: &Transaction, tile: &MapTile, activity_id: u64) -> Result<()> {
+    pub async fn upsert<'e, E>(&self, executor: E, tile: &MapTile, activity_id: u64) -> Result<()>
+        where E: DbExecutor<'e> {
         let sql = self.get_sql(UPSERT_TILE);
-        let values = params![tile.get_x(), tile.get_y(), activity_id];
         trace!("Execute\n{}\nwith {}, {}, {}", sql, tile.get_x(), tile.get_y(), activity_id);
-        tx.execute(&sql, values).map(|_| ()) // Ignore returned row count
+        query(sql.as_str())
+            .bind(tile.get_x() as i64) // sqlx::sqlite cannot encode u64
+            .bind(tile.get_y() as i64) // see https://docs.rs/sqlx/latest/sqlx/sqlite/types
+            .bind(activity_id as i64)
+            .execute(executor)
+            .await
+            .map(|_| ()) // Ignore returned row count
     }
 
-    pub fn select(&self, tx: &Transaction, bounds: Option<MapTileBounds>) -> Result<MapTileVec> {
+    pub async fn select<'e, E>(&self, executor: E, bounds: Option<MapTileBounds>) -> Result<MapTileVec>
+        where E: DbExecutor<'e> {
         let sql = match bounds {
             Some(_) => self.get_sql(SELECT_TILES_BOUNDED),
             None => self.get_sql(SELECT_TILES)
         };
         debug!("Execute\n{sql}");
-        let params: &[&dyn ToSql] = match bounds {
-            Some(ref bounds) => &[&bounds.x1, &bounds.x2, &bounds.y1, &bounds.y2],
-            None => &[]
+        let query = match bounds {
+            None => query(sql.as_str()),
+            Some(bounds) => query(sql.as_str())
+                .bind(bounds.x1 as i64)
+                .bind(bounds.x2 as i64)
+                .bind(bounds.y1 as i64)
+                .bind(bounds.y2 as i64)
         };
         let timer = Instant::now();
-        let mut stmt = tx.prepare(&sql)?;
-        let tile_iter = stmt.query_map(params, |row| {
-            Ok(MapTileRow::new(
-                MapTile::new(row.get(0)?, row.get(1)?),
-                row.get(2)?,
-                row.get(3)?
-            ))
-        })?;
-        let results = tile_iter.collect::<Result<MapTileVec, _>>();
+        let tiles: MapTileVec = query
+            .map(|row: DBRow| {
+                MapTileRow::new(
+                    MapTile::new(row.get(0), row.get(1)),
+                    row.get(2),
+                    row.get(3))
+            })
+            .fetch_all(executor)
+            .await?;
         debug!("Select from {} took {}", self.table_name, format_duration(timer.elapsed()));
-        results
+        Ok(tiles)
     }
 
-    pub fn delete_all(&self, tx: &Transaction) -> Result<usize> {
+    pub async fn delete_all<'e, E>(&self, executor: E) -> Result<usize>
+        where E: DbExecutor<'e> {
         let sql = self.get_sql(DELETE_TILES);
         debug!("Execute\n{sql}");
-        tx.execute(&sql, params![])
+        let result = query(sql.as_str()).execute(executor).await?;
+        Ok(result.rows_affected() as usize)
     }
 
     fn get_sql(&self, sql: &str) -> String {
@@ -111,90 +127,79 @@ impl MapTileTable {
 
 #[cfg(test)]
 mod tests {
-    use rusqlite::Connection;
     use crate::database::activity_table::ActivityTable;
+    use crate::database::db_types::DBPool;
     use crate::database::maptile_table::{MapTileRow, MapTileTable, MapTileVec};
     use crate::domain::activity::Activity;
     use crate::domain::map_tile::MapTile;
     use crate::domain::map_tile_bounds::MapTileBounds;
     use crate::domain::map_zoom::MapZoom;
 
-    #[test]
-    fn test_upsert() {
+    #[tokio::test]
+    async fn test_upsert() {
         let tile1 = MapTile::new(1, 1);
         let tile2 = MapTile::new(2, 2);
         let tile3 = MapTile::new(1, 1); // Identical to tile1
         let tile4 = MapTile::new(1, 1); // Ditto
 
-        let mut conn = create_connection();
-        ActivityTable::create_table(&conn).unwrap();
-        let tile_table = create_tile_table(&conn);
+        let pool = create_pool().await;
+        ActivityTable::create_table(&pool).await.unwrap();
+        let tile_table = create_tile_table(&pool).await;
 
-        let tx = conn.transaction().unwrap();
-        ActivityTable::insert(&tx, &Activity::dummy(1, "foo")).unwrap();
-        ActivityTable::insert(&tx, &Activity::dummy(2, "bar")).unwrap();
+        ActivityTable::insert(&pool, &Activity::dummy(1, "foo")).await.unwrap();
+        ActivityTable::insert(&pool, &Activity::dummy(2, "bar")).await.unwrap();
 
-        assert!(tile_table.upsert(&tx, &tile1, 1).is_ok());
-        assert!(tile_table.upsert(&tx, &tile2, 2).is_ok());
-        assert!(tile_table.upsert(&tx, &tile3, 1).is_ok()); // tile3 is same as tile1
-        assert!(tile_table.upsert(&tx, &tile4, 1).is_ok()); // Ditto
-        tx.commit().unwrap();
-
-        /*
-        let ref_tile_rows = [
-            &MapTileRow { tile: tile1, activity_id: 1, activity_count: 3 },
-            &MapTileRow { tile: tile2, activity_id: 2, activity_count: 1 }
-        ];
-         */
+        assert!(tile_table.upsert(&pool, &tile1, 1).await.is_ok());
+        assert!(tile_table.upsert(&pool, &tile2, 2).await.is_ok());
+        assert!(tile_table.upsert(&pool, &tile3, 1).await.is_ok()); // tile3 is same as tile1
+        assert!(tile_table.upsert(&pool, &tile4, 1).await.is_ok()); // Ditto
 
         let ref_tile_rows = vec![
             MapTileRow { tile: tile1, activity_id: 1, activity_count: 3 },
             MapTileRow { tile: tile2, activity_id: 2, activity_count: 1 }
         ];
-        check_results(tile_table, &mut conn, ref_tile_rows);
+        check_results(tile_table, &pool, ref_tile_rows).await;
     }
 
-    #[test]
-    fn test_delete() {
-        let mut conn = create_connection();
-        ActivityTable::create_table(&conn).unwrap();
-        let tile_table = create_tile_table(&conn);
+    #[tokio::test]
+    async fn test_delete() {
+        let pool = create_pool().await;
+        ActivityTable::create_table(&pool).await.unwrap();
+        let tile_table = create_tile_table(&pool).await;
 
-        let tx = conn.transaction().unwrap();
-        ActivityTable::insert(&tx, &Activity::dummy(1, "foo")).unwrap();
-        ActivityTable::insert(&tx, &Activity::dummy(2, "bar")).unwrap();
-        tile_table.upsert(&tx, &MapTile::new(1, 1), 1).unwrap();
-        tile_table.upsert(&tx, &MapTile::new(2, 2), 2).unwrap();
+        ActivityTable::insert(&pool, &Activity::dummy(1, "foo")).await.unwrap();
+        ActivityTable::insert(&pool, &Activity::dummy(2, "bar")).await.unwrap();
+        tile_table.upsert(&pool, &MapTile::new(1, 1), 1).await.unwrap();
+        tile_table.upsert(&pool, &MapTile::new(2, 2), 2).await.unwrap();
 
-        assert!(tile_table.delete_all(&tx).is_ok());
-        tx.commit().unwrap();
+        assert!(tile_table.delete_all(&pool).await.is_ok());
 
-        check_results(tile_table, &mut conn, vec![]);
+        check_results(tile_table, &pool, vec![]).await;
     }
 
-    #[test]
-    fn test_select_with_bounds() {
+    #[tokio::test]
+    async fn test_select_with_bounds() {
         let tile1 = MapTile::new(1, 1);
         let tile2 = MapTile::new(2, 2);
 
-        let mut conn = create_connection();
-        ActivityTable::create_table(&conn).unwrap();
-        let tile_table = create_tile_table(&conn);
+        let pool = create_pool().await;
+        ActivityTable::create_table(&pool).await.unwrap();
+        let tile_table = create_tile_table(&pool).await;
 
-        let tx = conn.transaction().unwrap();
-        ActivityTable::insert(&tx, &Activity::dummy(1, "foo")).unwrap();
-        tile_table.upsert(&tx, &tile1, 1).unwrap();
-        tile_table.upsert(&tx, &tile2, 1).unwrap();
+        let mut tx = pool.begin().await.unwrap();
+        ActivityTable::insert(&mut *tx, &Activity::dummy(1, "foo")).await.unwrap();
+        tile_table.upsert(&mut *tx, &tile1, 1).await.unwrap();
+        tile_table.upsert(&mut *tx, &tile2, 1).await.unwrap();
 
         // 1) Select no tile
         let bounds = MapTileBounds::new(3, 3, 3, 3);
-        let result = tile_table.select(&tx, Some(bounds));
+        let result = tile_table.select(&mut *tx, Some(bounds)).await;
         assert!(result.is_ok());
         compare_results(result.unwrap(), vec![]);
 
         // 2) Select upper-left tile only
         let bounds = MapTileBounds::new(0, 0, 1, 1);
-        let result = tile_table.select(&tx, Some(bounds));
+        let result = tile_table.select(&mut *tx, Some(bounds)).await;
         assert!(result.is_ok());
         compare_results(result.unwrap(), vec![
             MapTileRow { tile: tile1.clone(), activity_id: 1, activity_count: 1 }
@@ -202,7 +207,7 @@ mod tests {
 
         // 3) Select lower-right tile only
         let bounds = MapTileBounds::new(2, 2, 5, 5);
-        let result = tile_table.select(&tx, Some(bounds));
+        let result = tile_table.select(&mut *tx, Some(bounds)).await;
         assert!(result.is_ok());
         compare_results(result.unwrap(), vec![
             MapTileRow { tile: tile2.clone(), activity_id: 1, activity_count: 1 }
@@ -210,30 +215,28 @@ mod tests {
 
         // 4) Select both tiles
         let bounds = MapTileBounds::new(1, 1, 2, 2);
-        let result = tile_table.select(&tx, Some(bounds));
+        let result = tile_table.select(&mut *tx, Some(bounds)).await;
         assert!(result.is_ok());
         compare_results(result.unwrap(), vec![
             MapTileRow { tile: tile1, activity_id: 1, activity_count: 1 },
             MapTileRow { tile: tile2, activity_id: 1, activity_count: 1 }
         ]);
 
-        tx.commit().unwrap();
+        tx.commit().await.unwrap();
     }
 
-    fn create_connection() -> Connection {
-        Connection::open(":memory:").unwrap()
+    async fn create_pool() -> DBPool {
+        DBPool::connect("sqlite::memory:").await.unwrap()
     }
 
-    fn create_tile_table(conn: &Connection) -> MapTileTable {
+    async fn create_tile_table(pool: &DBPool) -> MapTileTable {
         let tile_table = MapTileTable::new(MapZoom::Level14);
-        tile_table.create_table(&conn).unwrap();
+        tile_table.create_table(pool).await.unwrap();
         tile_table
     }
 
-    fn check_results(tile_table: MapTileTable, conn: &mut Connection, ref_tile_rows: MapTileVec) {
-        let tx = conn.transaction().unwrap();
-        let tile_rows = tile_table.select(&tx, None).unwrap();
-        tx.commit().unwrap();
+    async fn check_results(tile_table: MapTileTable, pool: &DBPool, ref_tile_rows: MapTileVec) {
+        let tile_rows = tile_table.select(pool, None).await.unwrap();
         compare_results(tile_rows, ref_tile_rows);
     }
 

@@ -92,7 +92,7 @@ pub async fn tiles_handler(State(state): State<MutexSharedState>, uri: Uri, Path
     let zoom = parse_zoom(zoom)?;
     let bounds = parse_bounds(params.bounds)?;
     let mut guard = state.lock().await;
-    let tiles = guard.service.get_tiles(zoom, bounds).map_err(internal_server_error)?;
+    let tiles = guard.service.get_tiles(zoom, bounds).await.map_err(internal_server_error)?;
     Ok(Json(tiles))
 }
 

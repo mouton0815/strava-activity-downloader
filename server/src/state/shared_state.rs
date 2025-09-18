@@ -75,7 +75,7 @@ impl SharedState {
         match self.activity_stats.as_ref() {
             Some(stats) => Ok(stats.clone()),
             None => {
-                let activity_stats = self.service.get_stats()?;
+                let activity_stats = self.service.get_stats().await?;
                 self.activity_stats = Some(activity_stats.clone());
                 Ok(activity_stats)
             }
@@ -107,8 +107,8 @@ mod tests {
     #[tokio::test]
     async fn test_activity_max_time() {
         let activities = vec![Activity::dummy(5, "2018-02-20T18:02:13Z")];
-        let mut service = ActivityService::new(":memory:", true).unwrap();
-        service.add(&activities).unwrap();
+        let mut service = ActivityService::new(":memory:", true).await.unwrap();
+        service.add(&activities).await.unwrap();
 
         let state = SharedState::dummy(service);
 
@@ -121,8 +121,8 @@ mod tests {
     #[tokio::test]
     async fn test_merge_stats() {
         let activities = vec![Activity::dummy(5, "2015-01-01T00:00:00Z")];
-        let mut service = ActivityService::new(":memory:", true).unwrap();
-        service.add(&activities).unwrap();
+        let mut service = ActivityService::new(":memory:", true).await.unwrap();
+        service.add(&activities).await.unwrap();
 
         let state = SharedState::dummy(service);
 
@@ -144,8 +144,8 @@ mod tests {
             Activity::dummy(5, "2018-02-20T18:02:13Z"),
             Activity::dummy(7, "2020-08-21T00:00:00Z")
         ];
-        let mut service = ActivityService::new(":memory:", true).unwrap();
-        service.add(&activities).unwrap();
+        let mut service = ActivityService::new(":memory:", true).await.unwrap();
+        service.add(&activities).await.unwrap();
 
         let state = SharedState::dummy(service);
 
