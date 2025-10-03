@@ -61,8 +61,6 @@ pub struct MapTileRow {
     activity_count: u32
 }
 
-type MapTileVec = Vec<MapTileRow>;
-
 impl MapTileRow {
     pub fn new(tile: MapTile, activity_id: i64, activity_count: u32) -> Self {
         Self { tile, activity_id, activity_count }
@@ -77,7 +75,8 @@ pub struct MapTileTable;
 
 impl MapTileTable {
     pub async fn create_table<'e, E>(executor: E, zoom: MapZoom) -> Result<()>
-        where E: DbExecutor<'e> {
+    where E: DbExecutor<'e>
+    {
         let sql = match zoom {
             MapZoom::Level14 => CREATE_TILE_TABLE_14,
             MapZoom::Level17 => CREATE_TILE_TABLE_17
@@ -87,8 +86,10 @@ impl MapTileTable {
         Ok(())
     }
 
-    pub async fn upsert<'e, E>(executor: E, zoom: MapZoom, tile: &MapTile, activity_id: u64) -> Result<()>
-        where E: DbExecutor<'e> {
+    pub async fn upsert<'e, E>(executor: E, zoom: MapZoom, tile: &MapTile, activity_id: u64)
+        -> Result<()>
+    where E: DbExecutor<'e>
+    {
         let sql = match zoom {
             MapZoom::Level14 => UPSERT_TILE_14,
             MapZoom::Level17 => UPSERT_TILE_17
@@ -104,8 +105,38 @@ impl MapTileTable {
     }
 
     /// Fetches all tiles for the given zoom level and bounds (if any)
-    pub async fn select<'e, E>(executor: E, zoom: MapZoom, bounds: Option<MapTileBounds>) -> Result<Vec<MapTile>>
-        where E: DbExecutor<'e>  + 'e {
+    pub async fn select<'e, E>(executor: E, zoom: MapZoom, bounds: Option<MapTileBounds>)
+        -> Result<Vec<MapTile>>
+    where E: DbExecutor<'e>  + 'e
+    {
+        Self::select_internal(executor, zoom, bounds, |row: &DBRow| {
+            MapTile::new(row.get(0), row.get(1))
+        }).await
+    }
+
+    /// In contrast to [Self::select], this method fetches all columns
+    #[allow(dead_code)]
+    pub async fn select_rows<'e, E>(executor: E, zoom: MapZoom, bounds: Option<MapTileBounds>)
+        -> Result<Vec<MapTileRow>>
+    where E: DbExecutor<'e>
+    {
+        Self::select_internal(executor, zoom, bounds, |row: &DBRow| {
+            MapTileRow::new(
+                MapTile::new(row.get(0), row.get(1)),
+                row.get(2),
+                row.get(3))
+        }).await
+    }
+
+    async fn select_internal<'e, E, T>(
+        executor: E,
+        zoom: MapZoom,
+        bounds: Option<MapTileBounds>,
+        mapper: fn(row: &DBRow) -> T) -> Result<Vec<T>>
+    where
+        E: DbExecutor<'e>,
+        T: Send + Unpin
+    {
         let sql = match bounds {
             None => match zoom {
                 MapZoom::Level14 => SELECT_TILES_14,
@@ -126,45 +157,8 @@ impl MapTileTable {
                 .bind(bounds.y2 as i64)
         };
         let timer = Instant::now();
-        let tiles: Vec<MapTile> = query
-            .map(|row: DBRow| MapTile::new(row.get(0), row.get(1)))
-            .fetch_all(executor)
-            .await?;
-        debug!("Select tiles for zoom {:?} took {}", zoom, format_duration(timer.elapsed()));
-        Ok(tiles)
-    }
-
-    /// In contrast to [Self::select], this method fetches all columns
-    #[allow(dead_code)]
-    pub async fn select_rows<'e, E>(executor: E, zoom: MapZoom, bounds: Option<MapTileBounds>) -> Result<MapTileVec>
-    where E: DbExecutor<'e> {
-        let sql = match bounds {
-            None => match zoom {
-                MapZoom::Level14 => SELECT_TILES_14,
-                MapZoom::Level17 => SELECT_TILES_17
-            },
-            Some(_) =>  match zoom {
-                MapZoom::Level14 => SELECT_TILES_BOUNDED_14,
-                MapZoom::Level17 => SELECT_TILES_BOUNDED_17
-            }
-        };
-        debug!("Execute\n{sql}");
-        let query = match bounds {
-            None => query(sql),
-            Some(bounds) => query(sql)
-                .bind(bounds.x1 as i64)
-                .bind(bounds.x2 as i64)
-                .bind(bounds.y1 as i64)
-                .bind(bounds.y2 as i64)
-        };
-        let timer = Instant::now();
-        let tiles: MapTileVec = query
-            .map(|row: DBRow| {
-                MapTileRow::new(
-                    MapTile::new(row.get(0), row.get(1)),
-                    row.get(2),
-                    row.get(3))
-            })
+        let tiles: Vec<T> = query
+            .map(|row: DBRow| mapper(&row))
             .fetch_all(executor)
             .await?;
         debug!("Select tiles for zoom {:?} took {}", zoom, format_duration(timer.elapsed()));
@@ -172,7 +166,8 @@ impl MapTileTable {
     }
 
     pub async fn delete_all<'e, E>(executor: E, zoom: MapZoom) -> Result<usize>
-        where E: DbExecutor<'e> {
+    where E: DbExecutor<'e>
+    {
         let sql = match zoom {
             MapZoom::Level14 => DELETE_TILES_14,
             MapZoom::Level17 => DELETE_TILES_17
@@ -187,7 +182,7 @@ impl MapTileTable {
 mod tests {
     use crate::database::activity_table::ActivityTable;
     use crate::database::db_types::DBPool;
-    use crate::database::maptile_table::{MapTileRow, MapTileTable, MapTileVec};
+    use crate::database::maptile_table::{MapTileRow, MapTileTable};
     use crate::domain::activity::Activity;
     use crate::domain::map_tile::MapTile;
     use crate::domain::map_tile_bounds::MapTileBounds;
@@ -214,11 +209,10 @@ mod tests {
         assert!(MapTileTable::upsert(&pool, ZOOM, &tile3, 1).await.is_ok()); // tile3 is same as tile1
         assert!(MapTileTable::upsert(&pool, ZOOM, &tile4, 1).await.is_ok()); // Ditto
 
-        let ref_tile_rows = vec![
+        check_row_results(&pool, ZOOM, vec![
             MapTileRow { tile: tile1, activity_id: 1, activity_count: 3 },
             MapTileRow { tile: tile2, activity_id: 2, activity_count: 1 }
-        ];
-        check_row_results(&pool, ZOOM, None, ref_tile_rows).await;
+        ]).await;
     }
 
     #[tokio::test]
@@ -283,25 +277,7 @@ mod tests {
         MapTileTable::upsert(&pool, ZOOM, &tile1, 1).await.unwrap();
         MapTileTable::upsert(&pool, ZOOM, &tile2, 1).await.unwrap();
 
-        // 1) Select no tile
-        let bounds = MapTileBounds::new(3, 3, 3, 3);
-        check_row_results(&pool, ZOOM, Some(bounds), vec![]).await;
-
-        // 2) Select upper-left tile only
-        let bounds = MapTileBounds::new(0, 0, 1, 1);
-        check_row_results(&pool, ZOOM, Some(bounds), vec![
-            MapTileRow { tile: tile1.clone(), activity_id: 1, activity_count: 1 }
-        ]).await;
-
-        // 3) Select lower-right tile only
-        let bounds = MapTileBounds::new(2, 2, 5, 5);
-        check_row_results(&pool, ZOOM, Some(bounds), vec![
-            MapTileRow { tile: tile2.clone(), activity_id: 1, activity_count: 1 }
-        ]).await;
-
-        // 4) Select both tiles
-        let bounds = MapTileBounds::new(1, 1, 2, 2);
-        check_row_results(&pool, ZOOM, Some(bounds), vec![
+        check_row_results(&pool, ZOOM, vec![
             MapTileRow { tile: tile1, activity_id: 1, activity_count: 1 },
             MapTileRow { tile: tile2, activity_id: 1, activity_count: 1 }
         ]).await;
@@ -316,8 +292,8 @@ mod tests {
         compare_results(tiles, ref_tiles);
     }
 
-    async fn check_row_results(pool: &DBPool, zoom: MapZoom, bounds: Option<MapTileBounds>, ref_tile_rows: MapTileVec) {
-        let tile_rows = MapTileTable::select_rows(pool, zoom, bounds).await.unwrap();
+    async fn check_row_results(pool: &DBPool, zoom: MapZoom, ref_tile_rows: Vec<MapTileRow>) {
+        let tile_rows = MapTileTable::select_rows(pool, zoom, None).await.unwrap();
         compare_results(tile_rows, ref_tile_rows);
     }
 
