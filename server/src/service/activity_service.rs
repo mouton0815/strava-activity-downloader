@@ -113,14 +113,9 @@ impl ActivityService {
 
     /// Returns all tiles for the given zoom level
     pub async fn get_tiles(&mut self, zoom: MapZoom, bounds: Option<MapTileBounds>) -> Result<Vec<MapTile>, BoxError> {
-        match &self.tile_tables {
-            Some(tile_tables) => {
-                let results = tile_tables[&zoom]
-                    .select(&self.pool, bounds).await?
-                    .iter()
-                    .map(|t| t.get_tile().clone())
-                    .collect();
-                Ok(results)
+        match &self.tile_tables { // TODO: Later, a flag should suffice
+            Some(_) => {
+                Ok(MapTileTable::select(&self.pool, zoom, bounds).await?)
             },
             None => {
                 warn!("Tile storage disabled");
