@@ -35,12 +35,24 @@ const DELETE_TILES : &str =
     "DELETE FROM $table_name";
 
 
-// "Instantiations" for all supported zoom levels
-const SELECT_TILES_14 : &str = str_replace!(SELECT_TILES, "$table_name", "maptile14");
-const SELECT_TILES_17 : &str = str_replace!(SELECT_TILES, "$table_name", "maptile17");
+const TILE_TABLE_14: &str = "maptile14";
+const TILE_TABLE_17: &str = "maptile17";
 
-const SELECT_TILES_BOUNDED_14 : &str = str_replace!(SELECT_TILES_BOUNDED, "$table_name", "maptile14");
-const SELECT_TILES_BOUNDED_17 : &str = str_replace!(SELECT_TILES_BOUNDED, "$table_name", "maptile17");
+// "Instantiations" for all supported zoom levels
+const CREATE_TILE_TABLE_14 : &str = str_replace!(CREATE_TILE_TABLE, "$table_name", TILE_TABLE_14);
+const CREATE_TILE_TABLE_17 : &str = str_replace!(CREATE_TILE_TABLE, "$table_name", TILE_TABLE_17);
+
+const UPSERT_TILE_14 : &str = str_replace!(UPSERT_TILE, "$table_name", TILE_TABLE_14);
+const UPSERT_TILE_17 : &str = str_replace!(UPSERT_TILE, "$table_name", TILE_TABLE_17);
+
+const SELECT_TILES_14 : &str = str_replace!(SELECT_TILES, "$table_name", TILE_TABLE_14);
+const SELECT_TILES_17 : &str = str_replace!(SELECT_TILES, "$table_name", TILE_TABLE_17);
+
+const SELECT_TILES_BOUNDED_14 : &str = str_replace!(SELECT_TILES_BOUNDED, "$table_name", TILE_TABLE_14);
+const SELECT_TILES_BOUNDED_17 : &str = str_replace!(SELECT_TILES_BOUNDED, "$table_name", TILE_TABLE_17);
+
+const DELETE_TILES_14 : &str = str_replace!(DELETE_TILES, "$table_name", TILE_TABLE_14);
+const DELETE_TILES_17 : &str = str_replace!(DELETE_TILES, "$table_name", TILE_TABLE_17);
 
 #[derive(Debug, PartialEq)]
 pub struct MapTileRow {
@@ -61,29 +73,28 @@ impl MapTileRow {
     }
 }
 
-pub struct MapTileTable {
-    table_name: String
-}
+pub struct MapTileTable;
 
 impl MapTileTable {
-    pub fn new(zoom: MapZoom) -> Self {
-        let table_name = format!("maptile{}", zoom.value());
-        Self { table_name }
-    }
-
-    pub async fn create_table<'e, E>(&self, executor: E) -> Result<()>
+    pub async fn create_table<'e, E>(executor: E, zoom: MapZoom) -> Result<()>
         where E: DbExecutor<'e> {
-        let sql = self.get_sql(CREATE_TILE_TABLE);
+        let sql = match zoom {
+            MapZoom::Level14 => CREATE_TILE_TABLE_14,
+            MapZoom::Level17 => CREATE_TILE_TABLE_17
+        };
         debug!("Execute\n{sql}");
-        query(sql.as_str()).execute(executor).await?;
+        query(sql).execute(executor).await?;
         Ok(())
     }
 
-    pub async fn upsert<'e, E>(&self, executor: E, tile: &MapTile, activity_id: u64) -> Result<()>
+    pub async fn upsert<'e, E>(executor: E, zoom: MapZoom, tile: &MapTile, activity_id: u64) -> Result<()>
         where E: DbExecutor<'e> {
-        let sql = self.get_sql(UPSERT_TILE);
+        let sql = match zoom {
+            MapZoom::Level14 => UPSERT_TILE_14,
+            MapZoom::Level17 => UPSERT_TILE_17
+        };
         trace!("Execute\n{}\nwith {}, {}, {}", sql, tile.get_x(), tile.get_y(), activity_id);
-        query(sql.as_str())
+        query(sql)
             .bind(tile.get_x() as i64) // sqlx::sqlite cannot encode u64
             .bind(tile.get_y() as i64) // see https://docs.rs/sqlx/latest/sqlx/sqlite/types
             .bind(activity_id as i64)
@@ -125,16 +136,22 @@ impl MapTileTable {
 
     /// In contrast to [Self::select], this method fetches all columns
     #[allow(dead_code)]
-    pub async fn select_rows<'e, E>(&self, executor: E, bounds: Option<MapTileBounds>) -> Result<MapTileVec>
+    pub async fn select_rows<'e, E>(executor: E, zoom: MapZoom, bounds: Option<MapTileBounds>) -> Result<MapTileVec>
     where E: DbExecutor<'e> {
         let sql = match bounds {
-            Some(_) => self.get_sql(SELECT_TILES_BOUNDED),
-            None => self.get_sql(SELECT_TILES)
+            None => match zoom {
+                MapZoom::Level14 => SELECT_TILES_14,
+                MapZoom::Level17 => SELECT_TILES_17
+            },
+            Some(_) =>  match zoom {
+                MapZoom::Level14 => SELECT_TILES_BOUNDED_14,
+                MapZoom::Level17 => SELECT_TILES_BOUNDED_17
+            }
         };
         debug!("Execute\n{sql}");
         let query = match bounds {
-            None => query(sql.as_str()),
-            Some(bounds) => query(sql.as_str())
+            None => query(sql),
+            Some(bounds) => query(sql)
                 .bind(bounds.x1 as i64)
                 .bind(bounds.x2 as i64)
                 .bind(bounds.y1 as i64)
@@ -150,20 +167,19 @@ impl MapTileTable {
             })
             .fetch_all(executor)
             .await?;
-        debug!("Select from {} took {}", self.table_name, format_duration(timer.elapsed()));
+        debug!("Select tiles for zoom {:?} took {}", zoom, format_duration(timer.elapsed()));
         Ok(tiles)
     }
 
-    pub async fn delete_all<'e, E>(&self, executor: E) -> Result<usize>
+    pub async fn delete_all<'e, E>(executor: E, zoom: MapZoom) -> Result<usize>
         where E: DbExecutor<'e> {
-        let sql = self.get_sql(DELETE_TILES);
+        let sql = match zoom {
+            MapZoom::Level14 => DELETE_TILES_14,
+            MapZoom::Level17 => DELETE_TILES_17
+        };
         debug!("Execute\n{sql}");
-        let result = query(sql.as_str()).execute(executor).await?;
+        let result = query(sql).execute(executor).await?;
         Ok(result.rows_affected() as usize)
-    }
-
-    fn get_sql(&self, sql: &str) -> String {
-        sql.replace("$table_name", &self.table_name)
     }
 }
 
@@ -177,6 +193,8 @@ mod tests {
     use crate::domain::map_tile_bounds::MapTileBounds;
     use crate::domain::map_zoom::MapZoom;
 
+    const ZOOM: MapZoom = MapZoom::Level14;
+
     #[tokio::test]
     async fn test_upsert() {
         let tile1 = MapTile::new(1, 1);
@@ -186,37 +204,37 @@ mod tests {
 
         let pool = create_pool().await;
         ActivityTable::create_table(&pool).await.unwrap();
-        let tile_table = create_tile_table(&pool).await;
+        MapTileTable::create_table(&pool, ZOOM).await.unwrap();
 
         ActivityTable::insert(&pool, &Activity::dummy(1, "foo")).await.unwrap();
         ActivityTable::insert(&pool, &Activity::dummy(2, "bar")).await.unwrap();
 
-        assert!(tile_table.upsert(&pool, &tile1, 1).await.is_ok());
-        assert!(tile_table.upsert(&pool, &tile2, 2).await.is_ok());
-        assert!(tile_table.upsert(&pool, &tile3, 1).await.is_ok()); // tile3 is same as tile1
-        assert!(tile_table.upsert(&pool, &tile4, 1).await.is_ok()); // Ditto
+        assert!(MapTileTable::upsert(&pool, ZOOM, &tile1, 1).await.is_ok());
+        assert!(MapTileTable::upsert(&pool, ZOOM, &tile2, 2).await.is_ok());
+        assert!(MapTileTable::upsert(&pool, ZOOM, &tile3, 1).await.is_ok()); // tile3 is same as tile1
+        assert!(MapTileTable::upsert(&pool, ZOOM, &tile4, 1).await.is_ok()); // Ditto
 
         let ref_tile_rows = vec![
             MapTileRow { tile: tile1, activity_id: 1, activity_count: 3 },
             MapTileRow { tile: tile2, activity_id: 2, activity_count: 1 }
         ];
-        check_row_results(tile_table, &pool, ref_tile_rows).await;
+        check_row_results(&pool, ZOOM, None, ref_tile_rows).await;
     }
 
     #[tokio::test]
     async fn test_delete() {
         let pool = create_pool().await;
         ActivityTable::create_table(&pool).await.unwrap();
-        let tile_table = create_tile_table(&pool).await;
+        MapTileTable::create_table(&pool, ZOOM).await.unwrap();
 
         ActivityTable::insert(&pool, &Activity::dummy(1, "foo")).await.unwrap();
         ActivityTable::insert(&pool, &Activity::dummy(2, "bar")).await.unwrap();
-        tile_table.upsert(&pool, &MapTile::new(1, 1), 1).await.unwrap();
-        tile_table.upsert(&pool, &MapTile::new(2, 2), 2).await.unwrap();
+        MapTileTable::upsert(&pool, ZOOM, &MapTile::new(1, 1), 1).await.unwrap();
+        MapTileTable::upsert(&pool, ZOOM, &MapTile::new(2, 2), 2).await.unwrap();
 
-        assert!(tile_table.delete_all(&pool).await.is_ok());
+        assert!(MapTileTable::delete_all(&pool, ZOOM).await.is_ok());
 
-        check_row_results(tile_table, &pool, vec![]).await;
+        check_results(&pool, ZOOM, None, vec![]).await;
     }
 
     #[tokio::test]
@@ -226,30 +244,30 @@ mod tests {
 
         let pool = create_pool().await;
         ActivityTable::create_table(&pool).await.unwrap();
-        let tile_table = create_tile_table(&pool).await;
+        MapTileTable::create_table(&pool, ZOOM).await.unwrap();
 
         ActivityTable::insert(&pool, &Activity::dummy(1, "foo")).await.unwrap();
-        tile_table.upsert(&pool, &tile1, 1).await.unwrap();
-        tile_table.upsert(&pool, &tile2, 1).await.unwrap();
+        MapTileTable::upsert(&pool, ZOOM, &tile1, 1).await.unwrap();
+        MapTileTable::upsert(&pool, ZOOM, &tile2, 1).await.unwrap();
 
         // 1) Select all (no bounds)
-        check_results(&pool, MapZoom::Level14, None, vec![tile1.clone(), tile2.clone()]).await;
+        check_results(&pool, ZOOM, None, vec![tile1.clone(), tile2.clone()]).await;
 
         // 2) Select nothing
         let bounds = MapTileBounds::new(3, 3, 3, 3);
-        check_results(&pool, MapZoom::Level14, Some(bounds), vec![]).await;
+        check_results(&pool, ZOOM, Some(bounds), vec![]).await;
 
         // 3) Select upper-left tile only
         let bounds = MapTileBounds::new(0, 0, 1, 1);
-        check_results(&pool, MapZoom::Level14, Some(bounds), vec![tile1.clone()]).await;
+        check_results(&pool, ZOOM, Some(bounds), vec![tile1.clone()]).await;
 
         // 4) Select lower-right tile only
         let bounds = MapTileBounds::new(2, 2, 5, 5);
-        check_results(&pool, MapZoom::Level14, Some(bounds), vec![tile2.clone()]).await;
+        check_results(&pool, ZOOM, Some(bounds), vec![tile2.clone()]).await;
 
         // 5) Select both tiles
         let bounds = MapTileBounds::new(1, 1, 2, 2);
-        check_results(&pool, MapZoom::Level14, Some(bounds), vec![tile1.clone(), tile2.clone()]).await;
+        check_results(&pool, ZOOM, Some(bounds), vec![tile1.clone(), tile2.clone()]).await;
     }
 
     #[tokio::test]
@@ -259,55 +277,38 @@ mod tests {
 
         let pool = create_pool().await;
         ActivityTable::create_table(&pool).await.unwrap();
-        let tile_table = create_tile_table(&pool).await;
+        MapTileTable::create_table(&pool, ZOOM).await.unwrap();
 
-        let mut tx = pool.begin().await.unwrap();
-        ActivityTable::insert(&mut *tx, &Activity::dummy(1, "foo")).await.unwrap();
-        tile_table.upsert(&mut *tx, &tile1, 1).await.unwrap();
-        tile_table.upsert(&mut *tx, &tile2, 1).await.unwrap();
+        ActivityTable::insert(&pool, &Activity::dummy(1, "foo")).await.unwrap();
+        MapTileTable::upsert(&pool, ZOOM, &tile1, 1).await.unwrap();
+        MapTileTable::upsert(&pool, ZOOM, &tile2, 1).await.unwrap();
 
         // 1) Select no tile
         let bounds = MapTileBounds::new(3, 3, 3, 3);
-        let result = tile_table.select_rows(&mut *tx, Some(bounds)).await;
-        assert!(result.is_ok());
-        compare_row_results(result.unwrap(), vec![]);
+        check_row_results(&pool, ZOOM, Some(bounds), vec![]).await;
 
         // 2) Select upper-left tile only
         let bounds = MapTileBounds::new(0, 0, 1, 1);
-        let result = tile_table.select_rows(&mut *tx, Some(bounds)).await;
-        assert!(result.is_ok());
-        compare_row_results(result.unwrap(), vec![
+        check_row_results(&pool, ZOOM, Some(bounds), vec![
             MapTileRow { tile: tile1.clone(), activity_id: 1, activity_count: 1 }
-        ]);
+        ]).await;
 
         // 3) Select lower-right tile only
         let bounds = MapTileBounds::new(2, 2, 5, 5);
-        let result = tile_table.select_rows(&mut *tx, Some(bounds)).await;
-        assert!(result.is_ok());
-        compare_row_results(result.unwrap(), vec![
+        check_row_results(&pool, ZOOM, Some(bounds), vec![
             MapTileRow { tile: tile2.clone(), activity_id: 1, activity_count: 1 }
-        ]);
+        ]).await;
 
         // 4) Select both tiles
         let bounds = MapTileBounds::new(1, 1, 2, 2);
-        let result = tile_table.select_rows(&mut *tx, Some(bounds)).await;
-        assert!(result.is_ok());
-        compare_row_results(result.unwrap(), vec![
+        check_row_results(&pool, ZOOM, Some(bounds), vec![
             MapTileRow { tile: tile1, activity_id: 1, activity_count: 1 },
             MapTileRow { tile: tile2, activity_id: 1, activity_count: 1 }
-        ]);
-
-        tx.commit().await.unwrap();
+        ]).await;
     }
 
     async fn create_pool() -> DBPool {
         DBPool::connect("sqlite::memory:").await.unwrap()
-    }
-
-    async fn create_tile_table(pool: &DBPool) -> MapTileTable {
-        let tile_table = MapTileTable::new(MapZoom::Level14);
-        tile_table.create_table(pool).await.unwrap();
-        tile_table
     }
 
     async fn check_results(pool: &DBPool, zoom: MapZoom, bounds: Option<MapTileBounds>, ref_tiles: Vec<MapTile>) {
@@ -315,23 +316,16 @@ mod tests {
         compare_results(tiles, ref_tiles);
     }
 
-    async fn check_row_results(tile_table: MapTileTable, pool: &DBPool, ref_tile_rows: MapTileVec) {
-        let tile_rows = tile_table.select_rows(pool, None).await.unwrap();
-        compare_row_results(tile_rows, ref_tile_rows);
+    async fn check_row_results(pool: &DBPool, zoom: MapZoom, bounds: Option<MapTileBounds>, ref_tile_rows: MapTileVec) {
+        let tile_rows = MapTileTable::select_rows(pool, zoom, bounds).await.unwrap();
+        compare_results(tile_rows, ref_tile_rows);
     }
 
-    fn compare_results(tiles: Vec<MapTile>, ref_tiles: Vec<MapTile>) {
+    fn compare_results<T>(tiles: Vec<T>, ref_tiles: Vec<T>)
+        where T: PartialEq + std::fmt::Debug {
         assert_eq!(tiles.len(), ref_tiles.len());
         for (index, ref_tile) in ref_tiles.iter().enumerate() {
             let tile = tiles.get(index);
-            assert_eq!(tile, Some(ref_tile));
-        }
-    }
-
-    fn compare_row_results(tile_rows: MapTileVec, ref_tile_rows: MapTileVec) {
-        assert_eq!(tile_rows.len(), ref_tile_rows.len());
-        for (index, ref_tile) in ref_tile_rows.iter().enumerate() {
-            let tile = tile_rows.get(index);
             assert_eq!(tile, Some(ref_tile));
         }
     }

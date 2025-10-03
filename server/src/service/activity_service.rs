@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use axum::BoxError;
 use log::{debug, info, warn};
 use crate::database::activity_table::ActivityTable;
@@ -12,28 +11,21 @@ use crate::domain::map_tile_bounds::MapTileBounds;
 use crate::domain::track_store_state::TrackStoreState;
 use crate::domain::map_zoom::MapZoom;
 
-type TileTableMap = HashMap<MapZoom, MapTileTable>;
-
 pub struct ActivityService {
     pool: DBPool,
-    tile_tables: Option<TileTableMap>,
+    store_tiles: bool
 }
 
 impl ActivityService {
     pub async fn new(db_path: &str, store_tiles: bool) -> Result<Self, BoxError> {
         let pool = DBPool::connect(db_path).await?;
         ActivityTable::create_table(&pool).await?;
-        let mut tile_tables: Option<TileTableMap> = None;
         if store_tiles {
-            let mut tables: TileTableMap = HashMap::new();
             for zoom in MapZoom::VALUES {
-                let table = MapTileTable::new(zoom);
-                table.create_table(&pool).await?;
-                tables.insert(zoom, table);
+                MapTileTable::create_table(&pool, zoom).await?;
             }
-            tile_tables = Some(tables);
         }
-        Ok(Self{ pool, tile_tables })
+        Ok(Self{ pool, store_tiles })
     }
 
     /// Adds all activities to the database and returns the computed [ActivityStats]
@@ -83,7 +75,7 @@ impl ActivityService {
 
     /// Derives and stores the tiles for all zoom levels from the given activity stream
     pub async fn store_tiles(&mut self, activity: &Activity, stream: &ActivityStream) -> Result<(), BoxError> {
-        if let Some(_) = &self.tile_tables {
+        if self.store_tiles {
             for zoom in MapZoom::VALUES {
                 let tiles = stream.to_tiles(zoom)?;
                 self.put_tiles(zoom, activity.id, &tiles).await?;
@@ -94,48 +86,37 @@ impl ActivityService {
 
     /// Stores tiles for the given zoom level
     pub async fn put_tiles(&mut self, zoom: MapZoom, activity_id: u64, tiles: &Vec<MapTile>) -> Result<(), BoxError> {
-        match &self.tile_tables {
-            Some(tile_tables) => {
-                let mut tx = self.pool.begin().await?;
-                let table = &tile_tables[&zoom];
-                debug!("Save {} tiles with zoom level {} for activity {}", tiles.len(), zoom.value(), activity_id);
-                for tile in tiles {
-                    table.upsert(&mut *tx, &tile, activity_id).await?;
-                }
-                tx.commit().await?;
+        if self.store_tiles {
+            let mut tx = self.pool.begin().await?;
+            debug!("Save {} tiles with zoom level {} for activity {}", tiles.len(), zoom.value(), activity_id);
+            for tile in tiles {
+                MapTileTable::upsert(&mut *tx, zoom, &tile, activity_id).await?;
             }
-            None => { // Check should happen in calling function
-                warn!("Tile storage disabled");
-            }
+            tx.commit().await?;
+        } else {
+            warn!("Tile storage disabled");
         }
         Ok(())
     }
 
     /// Returns all tiles for the given zoom level
     pub async fn get_tiles(&mut self, zoom: MapZoom, bounds: Option<MapTileBounds>) -> Result<Vec<MapTile>, BoxError> {
-        match &self.tile_tables { // TODO: Later, a flag should suffice
-            Some(_) => {
-                Ok(MapTileTable::select(&self.pool, zoom, bounds).await?)
-            },
-            None => {
-                warn!("Tile storage disabled");
-                Ok(vec![])
-            }
+        if self.store_tiles {
+            Ok(MapTileTable::select(&self.pool, zoom, bounds).await?)
+        } else {
+            warn!("Tile storage disabled");
+            Ok(vec![])
         }
     }
 
     /// Deletes **all** tiles for all zoom levels
     pub async fn delete_all_tiles(&mut self) -> Result<(), BoxError> {
-        match &self.tile_tables {
-            Some(tile_tables) => {
-                for zoom in MapZoom::VALUES {
-                    let table = &tile_tables[&zoom];
-                    table.delete_all(&self.pool).await?;
-                }
-            },
-            None => {
-                warn!("Tile storage disabled");
+        if self.store_tiles {
+            for zoom in MapZoom::VALUES {
+                MapTileTable::delete_all(&self.pool, zoom).await?;
             }
+        } else {
+            warn!("Tile storage disabled");
         }
         Ok(())
     }
