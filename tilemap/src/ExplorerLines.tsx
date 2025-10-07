@@ -62,7 +62,7 @@ export function ExplorerLines({ tileZoom, lineColor }: ExplorerLinesProps) {
     return (
         <div>
             {lineCoordsArray.map((lineCoords, index) => (
-                <Polyline key={index} positions={lineCoords} pathOptions={{ color: lineColor, weight: 2, opacity: 1 }} />
+                <Polyline key={index} positions={lineCoords} pathOptions={{ color: lineColor, weight: 0.5, opacity: 1 }} />
             ))}
         </div>
     )
