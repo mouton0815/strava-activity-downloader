@@ -1,49 +1,7 @@
 import { Polyline, useMapEvents } from 'react-leaflet'
 import { useEffect, useState } from 'react'
-import { Coords } from 'tiles-math'
+import { Coords, lat2y, lon2x, x2lon, y2lat } from 'tiles-math'
 import { LatLngBounds } from 'leaflet'
-
-/**
- * Calculates the latitude of a tile given its y position and zoom level
- * @param y - the y coordinate of a tile
- * @param zoom the map zoom level
- * @returns the corresponding latitude
- */
-export function y2lat(y: number, zoom: number): number {
-    const n = Math.PI - (2 * Math.PI * y) / Math.pow(2, zoom)
-    return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)))
-}
-
-/**
- * Calculates the longitude of a tile given its x position and zoom level
- * @param x - the x coordinate of a tile
- * @param zoom the map zoom level
- * @returns the corresponding longitude
- */
-export function x2lon(x: number, zoom: number): number {
-    return (x / Math.pow(2, zoom)) * 360 - 180
-}
-
-/**
- * Calculates the y part of a tile from a latitude and zoom level.
- * @param lat - a latitude
- * @param zoom - a map zoom level
- * @returns the corresponding y position
- */
-export function lat2y(lat: number, zoom: number): number {
-    const latRad = (lat * Math.PI) / 180
-    return Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * (1 << zoom))
-}
-
-/**
- * Calculates the x part of a tile from a longitude and zoom level.
- * @param lon - a longitude
- * @param zoom - a map zoom level
- * @returns the corresponding x position
- */
-export function lon2x(lon: number, zoom: number): number {
-    return Math.floor(((lon + 180) / 360) * (1 << zoom))
-}
 
 type ExplorerLinesProps = {
     tileZoom: number
