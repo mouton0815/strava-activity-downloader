@@ -5,7 +5,7 @@ import { TileContainer } from './TileContainer.tsx'
 import './App.css'
 import { ExplorerLines } from './ExplorerLines.tsx'
 
-const SERVER_URL = 'http://localhost:2525' // Base URL of the Rust server, use http://localhost:2525 in dev mode
+const SERVER_URL = '' // http://localhost:2525' // Base URL of the Rust server, use http://localhost:2525 in dev mode
 const TILES_URL = `${SERVER_URL}/tiles`
 
 const ZOOM_LEVELS = [14, 17]
