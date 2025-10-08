@@ -34,9 +34,6 @@ export function ExplorerLines({ tileZoom, lineColor }: ExplorerLinesProps) {
             const mapWest = mapBounds.getWest()
             const mapSouth = mapBounds.getSouth()
             const mapEast = mapBounds.getEast()
-            // const tileNW = coords2tile([mapNorth, mapWest], zoom)
-            // const tileNE = coords2tile([mapNorth, mapEast], zoom)
-            // const tileSW = coords2tile([mapSouth, mapWest], zoom)
 
             const lineArray: Array<Coords[]> = []
             // Horizontal lines
