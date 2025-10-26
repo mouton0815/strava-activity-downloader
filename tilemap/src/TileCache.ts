@@ -1,22 +1,21 @@
-type TileTuple = [number, number] // Tile [x,y] as delivered by the REST endpoint
-export type TileArray = Array<TileTuple>
+import { TileSet } from 'tiles-math'
 
 export class TileCache {
-    map: Map<number, TileArray> // zoom -> [tile, tile, ...]
-    constructor(map: Map<number, TileArray> | null = null) {
-        this.map = map || new Map<number, TileArray>()
+    map: Map<number, TileSet> // zoom -> [tile, tile, ...]
+    constructor(map: Map<number, TileSet> | null = null) {
+        this.map = map || new Map<number, TileSet>()
     }
     shallowCopy(): TileCache {
         return new TileCache(this.map)
     }
-    [Symbol.iterator](): IterableIterator<[number, TileArray]> {
-        return this.map[Symbol.iterator]();
+    [Symbol.iterator](): IterableIterator<TileSet> {
+        return this.map.values()[Symbol.iterator]();
     }
-    get(key: number): TileArray | undefined {
-        return this.map.get(key)
+    get(zoom: number): TileSet | undefined {
+        return this.map.get(zoom)
     }
-    set(key: number, value: TileArray): TileCache {
-        this.map.set(key, value)
+    set(zoom: number, tiles: TileSet): TileCache {
+        this.map.set(zoom, tiles)
         return this
     }
 }
