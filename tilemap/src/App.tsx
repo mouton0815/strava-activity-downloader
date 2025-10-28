@@ -1,11 +1,15 @@
 import { LatLngTuple } from 'leaflet'
 import { MapContainer, TileLayer } from 'react-leaflet'
-import { LocationContainer } from './LocationContainer.tsx'
+import { LocationMarker } from './LocationMarker.tsx'
 import { TileContainer } from './TileContainer.tsx'
-import './App.css'
 import { ExplorerLines } from './ExplorerLines.tsx'
+import { LocationWatcher } from './LocationWatcher.tsx'
+import './App.css'
 
-const SERVER_URL = '' // http://localhost:2525' // Base URL of the Rust server, use http://localhost:2525 in dev mode
+// Base URL of the Rust server.
+// Use an empty string if this frontend is delivered by the Rust server.
+// Use 'http://localhost:2525' if this frontend runs in dev mode (`npm run dev`).
+const SERVER_URL = '' // 'http://localhost:2525'
 const TILES_URL = `${SERVER_URL}/tiles`
 
 const ZOOM_LEVELS = [14, 17]
@@ -20,14 +24,15 @@ export function App() {
         <MapContainer
             zoomSnap={0.1}
             center={DEFAULT_CENTER}
-            zoom={13}
+            zoom={14}
             scrollWheelZoom={true}
             style={{ height: '100vh', minWidth: '100vw' }}>
             <TileLayer
                 attribution='&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
-            <LocationContainer crossHairSize={CROSSHAIR_SIZE} />
+            <LocationWatcher />
+            <LocationMarker crossHairSize={CROSSHAIR_SIZE} />
             <TileContainer tilesUrl={TILES_URL} zoomLevels={ZOOM_LEVELS} tileColors={TILE_COLORS}/>
             <ExplorerLines tileZoom={14} lineColor={'blue'} />
             <ExplorerLines tileZoom={17} lineColor={'green'} />

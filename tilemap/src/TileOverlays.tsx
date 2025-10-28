@@ -1,6 +1,8 @@
 import { Pane, Rectangle } from 'react-leaflet'
-import { Tile, TileSet } from 'tiles-math'
+import { coords2tile, Tile, TileSet } from 'tiles-math'
 import { TileCache } from './TileCache.ts'
+import { useLocationStore } from './useLocationStore.ts'
+import { useState } from 'react'
 
 type TileOverlaysProps = {
     tileCache: TileCache
@@ -21,12 +23,30 @@ type TileOverlayProps = {
 }
 
 function TileOverlay({ tiles, color, pane }: TileOverlayProps) {
+    const position  = useLocationStore(state => state.position)
+    const [candidates, setCandidates] = useState<TileSet>(new TileSet(tiles.getZoom()))
+
+    if (position) {
+        const tileNo = coords2tile([position.lat, position.lng], tiles.getZoom())
+        if (!candidates.has(tileNo) && !tiles.has(tileNo)) {
+            candidates.addTile(tileNo)
+            setCandidates(candidates.clone())
+        }
+    }
+
+    const regularTiles = tiles.map((tile: Tile, index) =>
+        <Rectangle key={index} bounds={tile.bounds()}
+                   pathOptions={{color, weight: 0.5, opacity: 0.5}}/>
+    )
+    const candidateTiles = candidates.map((tile: Tile, index) =>
+        <Rectangle key={index} bounds={tile.bounds()}
+                   pathOptions={{color, weight: 1, opacity: 1, fillOpacity: 0.4}}/>
+    )
+
     return (
         <Pane name={`pane-${pane}`} style={{ zIndex: 500 + pane }}>
-            {tiles.map((tile: Tile, index) =>
-                <Rectangle key={index} bounds={tile.bounds()}
-                           pathOptions={{color, weight: 0.5, opacity: 0.5}}/>
-            )}
+            {regularTiles}
+            {candidateTiles}
         </Pane>
     )
 }
