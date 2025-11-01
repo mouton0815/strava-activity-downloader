@@ -2,7 +2,7 @@ import { Pane, Rectangle } from 'react-leaflet'
 import { coords2tile, Tile, TileSet } from 'tiles-math'
 import { TileCache } from './TileCache.ts'
 import { useLocationStore } from './useLocationStore.ts'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 type TileOverlaysProps = {
     tileCache: TileCache
@@ -26,13 +26,25 @@ function TileOverlay({ tiles, color, pane }: TileOverlayProps) {
     const position  = useLocationStore(state => state.position)
     const [candidates, setCandidates] = useState<TileSet>(new TileSet(tiles.getZoom()))
 
-    if (position) {
-        const tileNo = coords2tile([position.lat, position.lng], tiles.getZoom())
-        if (!candidates.has(tileNo) && !tiles.has(tileNo)) {
-            candidates.addTile(tileNo)
-            setCandidates(candidates.clone())
+    useEffect(() => {
+        if (position) {
+            let changed = false
+            for (const tileNo of candidates) {
+                if (tiles.has(tileNo)) {
+                    candidates.removeTile(tileNo)
+                    changed = true
+                }
+            }
+            const tileNo = coords2tile([position.lat, position.lng], tiles.getZoom())
+            if (!candidates.has(tileNo) && !tiles.has(tileNo)) {
+                candidates.addTile(tileNo)
+                changed = true
+            }
+            if (changed) {
+                setCandidates(candidates.clone()) // Shallow clone
+            }
         }
-    }
+    }, [position])
 
     const regularTiles = tiles.map((tile: Tile, index) =>
         <Rectangle key={index} bounds={tile.bounds()}
