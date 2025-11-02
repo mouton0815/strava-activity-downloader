@@ -1,7 +1,7 @@
-import { divIcon } from 'leaflet'
-import { Marker, useMap } from 'react-leaflet'
-import { useLocationStore } from './useLocationStore.ts'
 import { useEffect } from 'react'
+import { Marker, useMap } from 'react-leaflet'
+import { divIcon } from 'leaflet'
+import { useLocation } from './useLocation.ts'
 
 type LocationMarkerProps = {
     crossHairSize: number
@@ -10,10 +10,10 @@ type LocationMarkerProps = {
 /**
  * Puts a crosshair marker on the map for the current GPS location
  * and pans the map to the new location (keeping the zoom level).
- * The location is delivered by {@link LocationWatcher}.
+ * The location is delivered by the {@link useLocation} hook.
  */
 export function LocationMarker({ crossHairSize }: LocationMarkerProps) {
-    const position = useLocationStore(state => state.position)
+    const location = useLocation()
     const map = useMap()
 
     const icon = divIcon({
@@ -23,12 +23,12 @@ export function LocationMarker({ crossHairSize }: LocationMarkerProps) {
     })
 
     useEffect(() => {
-        if (position) {
-            map.panTo(position) // Pan but keep current zoom
+        if (location) {
+            map.panTo(location) // Pan but keep current zoom
         }
-    }, [map, position])
+    }, [map, location])
 
-    if (!position) return null
+    if (!location) return null
 
-    return <Marker position={position} icon={icon} />
+    return <Marker position={location} icon={icon} />
 }

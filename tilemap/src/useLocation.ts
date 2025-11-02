@@ -1,18 +1,17 @@
-import { useEffect } from 'react'
-import { ErrorEvent, LocationEvent } from 'leaflet'
+import { useEffect, useState } from 'react'
+import { ErrorEvent, LatLng, LocationEvent } from 'leaflet'
 import { useMap } from 'react-leaflet'
-import { useLocationStore } from './useLocationStore.ts'
 
 /**
- * A non-UI component that watches location changes and puts the location into a global Zustand.
+ * A hook that watches changes of the GPS location.
  */
-export function LocationWatcher(): null {
-    const setPosition = useLocationStore(state => state.setPosition)
+export function useLocation(): LatLng | null {
+    const [location, setLocation] = useState<LatLng | null>(null)
     const map = useMap()
 
     useEffect(() => {
         const handleLocationFound = (event: LocationEvent) => {
-            setPosition(event.latlng)
+            setLocation(event.latlng)
         }
 
         const handleLocationError = (event: ErrorEvent) => {
@@ -28,7 +27,7 @@ export function LocationWatcher(): null {
             map.off("locationerror", handleLocationError)
             map.stopLocate()
         }
-    }, [map, setPosition])
+    }, [map, setLocation])
 
-    return null
+    return location
 }

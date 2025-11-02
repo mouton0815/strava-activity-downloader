@@ -4,13 +4,14 @@ import { useFetchedTiles } from './useFetchedTiles.ts'
 import { useDetectedTiles } from './useDetectedTiles.ts'
 
 type TilePanesProps = {
+    tilesUrl: string
     zoomLevels: Array<number>
     tileColors: Array<string>
 }
 
-export function TilePanes({ zoomLevels, tileColors }: TilePanesProps) {
-    const fetchedTiles = useFetchedTiles(state => state.fetchedTiles)
-    const detectedTiles = useDetectedTiles(state => state.detectedTiles)
+export function TilePanes({ tilesUrl, zoomLevels, tileColors }: TilePanesProps) {
+    const fetchedTiles = useFetchedTiles(tilesUrl, zoomLevels)
+    const detectedTiles = useDetectedTiles(tilesUrl, zoomLevels)
     const panes = zoomLevels.map((zoom, index) =>
         <TilePane key={index} fetchedSet={fetchedTiles.get(zoom)} detectedSet={detectedTiles.get(zoom)} tileColor={tileColors[index]} paneIndex={index} />
     )
