@@ -1,9 +1,11 @@
 import { LatLngTuple } from 'leaflet'
 import { MapContainer, TileLayer } from 'react-leaflet'
 import { LocationMarker } from './LocationMarker.tsx'
-import { TileContainer } from './TileContainer.tsx'
 import { ExplorerLines } from './ExplorerLines.tsx'
 import { LocationWatcher } from './LocationWatcher.tsx'
+import { TileFetcher } from './TileFetcher.tsx'
+import { TileDetector } from './TileDetector.tsx'
+import { TilePanes } from './TilePanes.tsx'
 import './App.css'
 
 // Base URL of the Rust server.
@@ -33,9 +35,10 @@ export function App() {
             />
             <LocationWatcher />
             <LocationMarker crossHairSize={CROSSHAIR_SIZE} />
-            <TileContainer tilesUrl={TILES_URL} zoomLevels={ZOOM_LEVELS} tileColors={TILE_COLORS}/>
-            <ExplorerLines tileZoom={14} lineColor={'blue'} />
-            <ExplorerLines tileZoom={17} lineColor={'green'} />
+            <TileFetcher tilesUrl={TILES_URL} zoomLevels={ZOOM_LEVELS} />
+            <TileDetector zoomLevels={ZOOM_LEVELS} />
+            <TilePanes zoomLevels={ZOOM_LEVELS} tileColors={TILE_COLORS} />
+            <ExplorerLines zoomLevels={ZOOM_LEVELS} lineColors={TILE_COLORS} />
         </MapContainer>
     )
 }

@@ -1,20 +1,22 @@
 import { useEffect, useState } from 'react'
-import { TileBoundsMap } from './TileBounds.ts'
-import { TileCache } from './TileCache.ts'
 import { useMapEvents } from 'react-leaflet'
-import { TileOverlays } from './TileOverlays.tsx'
+import { TileBoundsMap } from './TileBounds.ts'
 import { loadTiles } from './loadTiles.ts'
+import { useTileStore } from './useTileStore.ts'
 
-type TileContainerProps = {
+type TileFetcherProps = {
     tilesUrl: string
     zoomLevels: Array<number>
-    tileColors: Array<string>
 }
 
-export function TileContainer({ tilesUrl, zoomLevels, tileColors }: TileContainerProps) {
+/**
+ * A non-UI component that watches map zooms and pans and loads the tiles for the resulting
+ * bounding box from the server. Then it puts the tiles into a global Zustand.
+ */
+export function TileFetcher({ tilesUrl, zoomLevels }: TileFetcherProps): null {
     const [newBounds, setNewBounds] = useState<TileBoundsMap | null>(null)
     const [maxBounds, setMaxBounds] = useState<TileBoundsMap>(new TileBoundsMap())
-    const [tileCache, setTileCache] = useState<TileCache>(new TileCache())
+    const { tileStore, setTileStore } = useTileStore()
 
     // React on map events (to determine location and to determine visible map bounds for tile loading)
     const map = useMapEvents({
@@ -34,7 +36,7 @@ export function TileContainer({ tilesUrl, zoomLevels, tileColors }: TileContaine
             //console.log('-----> ready')
             setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds(), zoomLevels))
         })
-    }, [map])
+    }, [map, zoomLevels])
 
     // Load (and cache) tiles according to the visible map bounds
     useEffect(() => {
@@ -48,13 +50,13 @@ export function TileContainer({ tilesUrl, zoomLevels, tileColors }: TileContaine
                     if (!maxBounds.contains(bounds, zoom)) {
                         const tiles = await loadTiles(tilesUrl, bounds, zoom, controller.signal)
                         if (!isCancelled) {
-                            tileCache.set(zoom, tiles)
+                            tileStore.set(zoom, tiles)
                             maxBounds.set(zoom, bounds)
                         }
                     }
                 }
                 if (!isCancelled) {
-                    setTileCache(tileCache.shallowCopy()) // Shallow copy
+                    setTileStore(tileStore.shallowCopy()) // Shallow copy
                     setMaxBounds(maxBounds.shallowCopy())
                 }
             }
@@ -68,6 +70,6 @@ export function TileContainer({ tilesUrl, zoomLevels, tileColors }: TileContaine
         }
     }, [newBounds])
 
-    // console.log("-----> PASS with ", bounds)
-    return <TileOverlays tileCache={tileCache} tileColors={tileColors} />
+    return null
 }
+

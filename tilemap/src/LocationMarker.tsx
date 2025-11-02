@@ -1,6 +1,7 @@
 import { divIcon } from 'leaflet'
 import { Marker, useMap } from 'react-leaflet'
 import { useLocationStore } from './useLocationStore.ts'
+import { useEffect } from 'react'
 
 type LocationMarkerProps = {
     crossHairSize: number
@@ -21,9 +22,13 @@ export function LocationMarker({ crossHairSize }: LocationMarkerProps) {
         iconAnchor: [crossHairSize / 2, crossHairSize / 2] // Centered
     })
 
-    if (!position) return null
+    useEffect(() => {
+        if (position) {
+            map.panTo(position) // Pan but keep current zoom
+        }
+    }, [map, position])
 
-    map.panTo(position) // Pan but keep current zoom
+    if (!position) return null
 
     return <Marker position={position} icon={icon} />
 }

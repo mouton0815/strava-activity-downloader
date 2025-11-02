@@ -1,31 +1,51 @@
-import { Polyline, useMapEvents } from 'react-leaflet'
 import { useEffect, useState } from 'react'
+import { Polyline, useMapEvents } from 'react-leaflet'
+import { LatLngBounds, Map } from 'leaflet'
 import { Coords, lat2y, lon2x, x2lon, y2lat } from 'tiles-math'
-import { LatLngBounds } from 'leaflet'
 
-type ExplorerLinesProps = {
+type ExplorerLineProps = {
+    zoomLevels: Array<number>
+    lineColors: Array<string>
+}
+
+/**
+ * Draws grids on the map for the given tile zoom levels.
+ * The grids get disabled when the map is zoomed out.
+ */
+export function ExplorerLines({ zoomLevels, lineColors }: ExplorerLineProps) {
+    const grids = zoomLevels.map((zoom, index) =>
+        <ExplorerGrid key={index} tileZoom={zoom} lineColor={lineColors[index]} />
+    )
+    return <div>{...grids}</div>
+}
+
+type ExplorerGridProps = {
     tileZoom: number
     lineColor: string
 }
 
-export function ExplorerLines({ tileZoom, lineColor }: ExplorerLinesProps) {
+/**
+ * Draws a grid for the given tile zoom level.
+ */
+function ExplorerGrid({ tileZoom, lineColor }: ExplorerGridProps) {
     const [lineCoordsArray, setLineCoordsArray] = useState<Array<Coords[]>>([])
     const [mapZoom, setMapZoom] = useState<number|null>(null)
     const [mapBounds, setMapBounds] = useState<LatLngBounds|null>(null)
 
-    function setMapProps() {
+    // Convenience function
+    function setMapProps(map: Map) {
         setMapZoom(map.getZoom())
         setMapBounds(map.getBounds())
     }
 
     const map = useMapEvents({
-        moveend: () => setMapProps(),
-        zoomend: () => setMapProps()
+        moveend: () => setMapProps(map),
+        zoomend: () => setMapProps(map)
     })
 
     // The 'load' event seems to be fired too early, so listen to the whenReady callback for the initial load
     useEffect(() => {
-        map.whenReady(() => setMapProps())
+        map.whenReady(() => setMapProps(map))
     }, [map])
 
     useEffect(() => {

@@ -4,7 +4,7 @@ import { useMap } from 'react-leaflet'
 import { useLocationStore } from './useLocationStore.ts'
 
 /**
- * A non-UI component that watches to location changes and puts the location into a global Zustand.
+ * A non-UI component that watches location changes and puts the location into a global Zustand.
  */
 export function LocationWatcher(): null {
     const setPosition = useLocationStore(state => state.setPosition)
