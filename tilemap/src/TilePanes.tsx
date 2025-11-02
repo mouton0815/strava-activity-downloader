@@ -1,7 +1,7 @@
 import { Tile, TileSet } from 'tiles-math'
 import { Pane, Rectangle } from 'react-leaflet'
-import { useTileStore } from './useTileStore.ts'
-import { useCandidateStore } from './useCandidateStore.ts'
+import { useFetchedTiles } from './useFetchedTiles.ts'
+import { useDetectedTiles } from './useDetectedTiles.ts'
 
 type TilePanesProps = {
     zoomLevels: Array<number>
@@ -9,34 +9,34 @@ type TilePanesProps = {
 }
 
 export function TilePanes({ zoomLevels, tileColors }: TilePanesProps) {
-    const tileStore = useTileStore(state => state.tileStore)
-    const candStore = useCandidateStore(state => state.candStore)
+    const fetchedTiles = useFetchedTiles(state => state.fetchedTiles)
+    const detectedTiles = useDetectedTiles(state => state.detectedTiles)
     const panes = zoomLevels.map((zoom, index) =>
-        <TilePane key={index} tileSet={tileStore.get(zoom)} candSet={candStore.get(zoom)} color={tileColors[index]} pane={index} />
+        <TilePane key={index} fetchedSet={fetchedTiles.get(zoom)} detectedSet={detectedTiles.get(zoom)} tileColor={tileColors[index]} paneIndex={index} />
     )
     return <div>{...panes}</div>
 }
 
 type TilePaneProps = {
-    tileSet: TileSet
-    candSet: TileSet
-    color: string
-    pane: number
+    fetchedSet: TileSet
+    detectedSet: TileSet
+    tileColor: string
+    paneIndex: number
 }
 
-function TilePane({ tileSet, candSet, color, pane }: TilePaneProps) {
-    const regularTiles = tileSet.map((tile: Tile, index) =>
+function TilePane({ fetchedSet, detectedSet, tileColor, paneIndex }: TilePaneProps) {
+    const fetchedTiles = fetchedSet.map((tile: Tile, index) =>
         <Rectangle key={index} bounds={tile.bounds()}
-                   pathOptions={{color, weight: 0.5, opacity: 0.5}}/>
+                   pathOptions={{color: tileColor, weight: 0.5, opacity: 0.5}}/>
     )
-    const candidateTiles = candSet.map((tile: Tile, index) =>
+    const detectedTiles = detectedSet.map((tile: Tile, index) =>
         <Rectangle key={index} bounds={tile.bounds()}
-                   pathOptions={{color, weight: 1, opacity: 1, fillOpacity: 0.3}}/>
+                   pathOptions={{color: tileColor, weight: 1, opacity: 1, fillOpacity: 0.3}}/>
     )
     return (
-        <Pane name={`pane-${pane}`} style={{ zIndex: 500 + pane }}>
-            {regularTiles}
-            {candidateTiles}
+        <Pane name={`pane-${paneIndex}`} style={{ zIndex: 500 + paneIndex }}>
+            {fetchedTiles}
+            {detectedTiles}
         </Pane>
     )
 }

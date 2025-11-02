@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { useMapEvents } from 'react-leaflet'
 import { TileBoundsMap } from './TileBounds.ts'
 import { loadTiles } from './loadTiles.ts'
-import { useTileStore } from './useTileStore.ts'
+import { useFetchedTiles } from './useFetchedTiles.ts'
 
 type TileFetcherProps = {
     tilesUrl: string
@@ -16,7 +16,7 @@ type TileFetcherProps = {
 export function TileFetcher({ tilesUrl, zoomLevels }: TileFetcherProps): null {
     const [newBounds, setNewBounds] = useState<TileBoundsMap | null>(null)
     const [maxBounds, setMaxBounds] = useState<TileBoundsMap>(new TileBoundsMap())
-    const { tileStore, setTileStore } = useTileStore()
+    const { fetchedTiles, setFetchedTiles } = useFetchedTiles()
 
     // React on map events (to determine location and to determine visible map bounds for tile loading)
     const map = useMapEvents({
@@ -49,14 +49,14 @@ export function TileFetcher({ tilesUrl, zoomLevels }: TileFetcherProps): null {
                     if (!maxBounds.contains(bounds, zoom)) {
                         const tiles = await loadTiles(tilesUrl, bounds, zoom, controller.signal)
                         if (!isCancelled) {
-                            tileStore.set(zoom, tiles)
+                            fetchedTiles.set(zoom, tiles)
                             maxBounds.set(zoom, bounds)
                             hasChanged = true
                         }
                     }
                 }
                 if (hasChanged && !isCancelled) {
-                    setTileStore(tileStore.shallowCopy()) // Shallow copy
+                    setFetchedTiles(fetchedTiles.shallowCopy()) // Shallow copy
                     setMaxBounds(maxBounds.shallowCopy())
                 }
             }
@@ -72,7 +72,7 @@ export function TileFetcher({ tilesUrl, zoomLevels }: TileFetcherProps): null {
             controller.abort()
             isCancelled = true;
         }
-    }, [maxBounds, newBounds, setTileStore, tileStore, tilesUrl, zoomLevels])
+    }, [maxBounds, newBounds, setFetchedTiles, fetchedTiles, tilesUrl, zoomLevels])
 
     return null
 }
