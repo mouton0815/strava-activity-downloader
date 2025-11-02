@@ -1,5 +1,4 @@
 import { TileStore } from './TileStore.ts'
-import { useFetchedTiles } from './useFetchedTiles.ts'
 import { useEffect, useState } from 'react'
 import { coords2tile } from 'tiles-math'
 import { useLocation } from './useLocation.ts'
@@ -8,9 +7,8 @@ import { useLocation } from './useLocation.ts'
  * A hook that checks if the current GPS location would lead to new tiles for the given zoom levels.
  * It returns the set of detected tiles.
  */
-export const useDetectedTiles = (tilesUrl: string, zoomLevels: Array<number>): TileStore => {
+export const useDetectedTiles = (fetchedTiles: TileStore, zoomLevels: Array<number>): TileStore => {
     const location  = useLocation()
-    const fetchedTiles = useFetchedTiles(tilesUrl, zoomLevels)
     const [detectedTiles, setDetectedTiles] = useState<TileStore>(new TileStore())
 
     useEffect(() => {

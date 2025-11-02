@@ -11,7 +11,7 @@ type TilePanesProps = {
 
 export function TilePanes({ tilesUrl, zoomLevels, tileColors }: TilePanesProps) {
     const fetchedTiles = useFetchedTiles(tilesUrl, zoomLevels)
-    const detectedTiles = useDetectedTiles(tilesUrl, zoomLevels)
+    const detectedTiles = useDetectedTiles(fetchedTiles, zoomLevels)
     const panes = zoomLevels.map((zoom, index) =>
         <TilePane key={index} fetchedSet={fetchedTiles.get(zoom)} detectedSet={detectedTiles.get(zoom)} tileColor={tileColors[index]} paneIndex={index} />
     )
