@@ -5,11 +5,9 @@ import { ExplorerLines } from './ExplorerLines.tsx'
 import { TilePanes } from './TilePanes.tsx'
 import './App.css'
 
-// Base URL of the Rust server.
-// Use an empty string if this frontend is delivered by the Rust server.
-// Use 'http://localhost:2525' if this frontend runs in dev mode (`npm run dev`).
-const SERVER_URL = '' // 'http://localhost:2525'
-const TILES_URL = `${SERVER_URL}/tiles`
+// This app and the tiles are delivered by the same Rust server.
+// In dev mode, requests are passed through a proxy, see vite.config.js.
+const TILES_URL = '/tiles'
 
 const ZOOM_LEVELS = [14, 17]
 const TILE_COLORS = ['blue', 'green'] // Tile colors for the zoom levels
