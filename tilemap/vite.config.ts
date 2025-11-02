@@ -7,10 +7,7 @@ export default defineConfig({
     server: {
         port: 2025,
         proxy: {
-            '/tiles': {
-                target: 'http://localhost:2525',
-                changeOrigin: true
-            }
+            '/tiles': 'http://localhost:2525'
         }
     }
 })
