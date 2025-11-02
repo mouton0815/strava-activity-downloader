@@ -44,7 +44,7 @@ export const TileDetector = ({ zoomLevels }: TileDetectorProps): null => {
                 setCandStore(candStore.shallowCopy())
             }
         }
-    }, [position, tileStore])
+    }, [candStore, position, setCandStore, tileStore, zoomLevels])
 
     return null
 }

@@ -45,6 +45,7 @@ export function TileFetcher({ tilesUrl, zoomLevels }: TileFetcherProps): null {
 
         async function fetchData() {
             if (newBounds) { // Null until the initial Leaflet event
+                let hasChanged = false
                 for (const zoom of zoomLevels) {
                     const bounds = newBounds.get(zoom)
                     if (!maxBounds.contains(bounds, zoom)) {
@@ -52,10 +53,11 @@ export function TileFetcher({ tilesUrl, zoomLevels }: TileFetcherProps): null {
                         if (!isCancelled) {
                             tileStore.set(zoom, tiles)
                             maxBounds.set(zoom, bounds)
+                            hasChanged = true
                         }
                     }
                 }
-                if (!isCancelled) {
+                if (hasChanged && !isCancelled) {
                     setTileStore(tileStore.shallowCopy()) // Shallow copy
                     setMaxBounds(maxBounds.shallowCopy())
                 }
@@ -68,7 +70,7 @@ export function TileFetcher({ tilesUrl, zoomLevels }: TileFetcherProps): null {
             controller.abort()
             isCancelled = true;
         }
-    }, [newBounds])
+    }, [maxBounds, newBounds, setTileStore, tileStore, tilesUrl, zoomLevels])
 
     return null
 }
