@@ -21,11 +21,9 @@ export function TileFetcher({ tilesUrl, zoomLevels }: TileFetcherProps): null {
     // React on map events (to determine location and to determine visible map bounds for tile loading)
     const map = useMapEvents({
         moveend: () => {
-            //console.log('-----> moved')
             setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds(), zoomLevels))
         },
         zoomend: () => {
-            //console.log('-----> zoomed')
             setNewBounds(TileBoundsMap.fromLatLngBounds(map.getBounds(), zoomLevels))
         }
     })
@@ -66,6 +64,10 @@ export function TileFetcher({ tilesUrl, zoomLevels }: TileFetcherProps): null {
 
         fetchData()
 
+        // The cleanup functions makes sure that the current tile fetching request is cancelled
+        // if newBounds has changed in the meantime. This happens during panning or zooming.
+        // Note that in theory, the change of any useEffect parameters could trigger this effect,
+        // but in reality only newBounds can change independently of the useEffect function.
         return () => {
             controller.abort()
             isCancelled = true;
