@@ -4,10 +4,11 @@ import {LoginButton} from './LoginButton'
 import {ToggleButton} from './ToggleButton'
 import {StatusTable} from "./StatusTable";
 
-const SERVER_URL = '' // Base URL of the Rust server, use http://localhost:2525 in dev mode
-const LOGIN_URL = `${SERVER_URL}/authorize`
-const TOGGLE_URL = `${SERVER_URL}/toggle`
-const STATUS_URL = `${SERVER_URL}/status`
+// This app is delivered by the same Rust server that exposes the endpoints.
+// In dev mode, requests are passed through a proxy, see vite.config.js.
+const LOGIN_URL = '/authorize'
+const TOGGLE_URL = '/toggle'
+const STATUS_URL = '/status'
 
 export const App = () => {
     const [status, setStatus] = useState<ServerStatus | null>(null)
