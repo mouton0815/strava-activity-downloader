@@ -17,4 +17,5 @@ dist/
 # Project specific
 application.yaml
 *.db
+PLAN.md
 
