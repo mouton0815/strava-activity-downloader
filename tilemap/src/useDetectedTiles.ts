@@ -13,32 +13,32 @@ export const useDetectedTiles = (fetchedTiles: TileStore, zoomLevels: Array<numb
 
     useEffect(() => {
         if (location) {
-            let changed = false
-            for (const zoom of zoomLevels) {
-                const detectedSet = detectedTiles.get(zoom)
-                const fetchedSet = fetchedTiles.get(zoom)
-                // Remove all tiles from the detected set that are part of the tile set fetched from server.
-                // The detected set may contain fetched tiles if the loading of tiles from the server took longer.
-                for (const tileNo of detectedSet) {
-                    if (fetchedSet.has(tileNo)) {
-                        detectedSet.removeTile(tileNo)
+            setDetectedTiles((prevDetectedTiles) => {
+                let changed = false
+                for (const zoom of zoomLevels) {
+                    const detectedSet = prevDetectedTiles.get(zoom)
+                    const fetchedSet = fetchedTiles.get(zoom)
+                    // Remove all tiles from the detected set that are part of the tile set fetched from server.
+                    // The detected set may contain fetched tiles if the loading of tiles from the server took longer.
+                    for (const tileNo of detectedSet) {
+                        if (fetchedSet.has(tileNo)) {
+                            detectedSet.removeTile(tileNo)
+                            changed = true
+                        }
+                    }
+                    // Check if the tile at the current GPS position is among the fetched tiles.
+                    // If not, add it to the set of detected tiles (for this zoom level).
+                    const tileNo = coords2tile([location.lat, location.lng], zoom)
+                    if (!detectedSet.has(tileNo) && !fetchedSet.has(tileNo)) {
+                        detectedSet.addTile(tileNo)
                         changed = true
                     }
-                }
-                // Check if the tile at the current GPS position is among the fetched tiles.
-                // If not, add it to the set of detected tiles (for this zoom level).
-                const tileNo = coords2tile([location.lat, location.lng], zoom)
-                if (!detectedSet.has(tileNo) && !fetchedSet.has(tileNo)) {
-                    detectedSet.addTile(tileNo)
-                    changed = true
-                }
 
-            }
-            if (changed) {
-                setDetectedTiles(detectedTiles.shallowCopy())
-            }
+                }
+                return changed ? prevDetectedTiles.shallowCopy() : prevDetectedTiles
+            })
         }
-    }, [detectedTiles, location, setDetectedTiles, fetchedTiles, zoomLevels])
+    }, [location, setDetectedTiles, fetchedTiles, zoomLevels])
 
     return detectedTiles
 }
