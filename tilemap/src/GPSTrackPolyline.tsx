@@ -17,7 +17,7 @@ export function GPSTrackPolyline() {
             positions={positions}
             pathOptions={{
                 color: 'red',
-                weight: 2,
+                weight: 3,
                 opacity: 0.7
             }}
         />

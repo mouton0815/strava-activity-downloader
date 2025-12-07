@@ -5,7 +5,7 @@ import { useLocation } from './useLocation.ts'
 
 const DISTANCE_THRESHOLD = 10 // meters
 const MAX_POSITIONS = 200
-const JUMP_DISTANCE_THRESHOLD = 500 // meters
+const JUMP_DISTANCE_THRESHOLD = 1000 // meters
 
 /**
  * A hook that tracks all GPS positions with a minimum distance threshold of 10 meters
