@@ -1,4 +1,4 @@
-import { TileStore } from './TileStore.ts'
+import { TileStore } from '../types/TileStore.ts'
 import { useEffect, useState } from 'react'
 import { coords2tile } from 'tiles-math'
 import { useLocation } from './useLocation.ts'

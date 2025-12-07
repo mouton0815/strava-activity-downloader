@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useMapEvents } from 'react-leaflet'
 import { TileNo, TileSet } from 'tiles-math'
-import { TileBounds, TileBoundsMap } from './TileBounds.ts'
-import { TileStore } from './TileStore.ts'
+import { TileBounds, TileBoundsMap } from '../types/TileBounds.ts'
+import { TileStore } from '../types/TileStore.ts'
 
 /**
  * A hook that watches map zooms and pans and loads the tiles for the resulting

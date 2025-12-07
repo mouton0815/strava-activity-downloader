@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { Marker, useMap } from 'react-leaflet'
 import { divIcon } from 'leaflet'
-import { useLocation } from './useLocation.ts'
+import { useLocation } from '../hooks/useLocation.ts'
 
 type LocationMarkerProps = {
     crossHairSize: number

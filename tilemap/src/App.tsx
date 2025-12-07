@@ -1,9 +1,9 @@
 import { LatLngTuple } from 'leaflet'
 import { MapContainer, TileLayer } from 'react-leaflet'
-import { LocationMarker } from './LocationMarker.tsx'
-import { ExplorerLines } from './ExplorerLines.tsx'
-import { TilePanes } from './TilePanes.tsx'
-import { GPSTrackPolyline } from './GPSTrackPolyline.tsx'
+import { LocationMarker } from './views/LocationMarker.tsx'
+import { ExplorerLines } from './views/ExplorerLines.tsx'
+import { TilePanes } from './views/TilePanes.tsx'
+import { TrackPolyline } from './views/TrackPolyline.tsx'
 import './App.css'
 
 // This app and the tiles are delivered by the same Rust server.
@@ -30,7 +30,7 @@ export function App() {
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
             <TilePanes tilesUrl={TILES_URL} zoomLevels={ZOOM_LEVELS} tileColors={TILE_COLORS} />
-            <GPSTrackPolyline />
+            <TrackPolyline />
             <LocationMarker crossHairSize={CROSSHAIR_SIZE} />
             <ExplorerLines zoomLevels={ZOOM_LEVELS} lineColors={TILE_COLORS} />
         </MapContainer>

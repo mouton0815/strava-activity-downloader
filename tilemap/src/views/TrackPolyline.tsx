@@ -1,11 +1,11 @@
 import { Polyline } from 'react-leaflet'
-import { usePositionTracker } from './usePositionTracker.ts'
+import { usePositionTracker } from '../hooks/usePositionTracker.ts'
 
 /**
  * Tracks GPS positions and visualizes them as a polyline on the map.
  * Positions are recorded with a minimum 10-meter distance threshold.
  */
-export function GPSTrackPolyline() {
+export function TrackPolyline() {
     const positions = usePositionTracker()
 
     if (positions.length === 0) {

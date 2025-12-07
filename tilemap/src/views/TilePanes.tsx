@@ -1,7 +1,7 @@
 import { Tile, TileSet } from 'tiles-math'
 import { Pane, Rectangle } from 'react-leaflet'
-import { useFetchedTiles } from './useFetchedTiles.ts'
-import { useDetectedTiles } from './useDetectedTiles.ts'
+import { useFetchedTiles } from '../hooks/useFetchedTiles.ts'
+import { useDetectedTiles } from '../hooks/useDetectedTiles.ts'
 
 type TilePanesProps = {
     tilesUrl: string
