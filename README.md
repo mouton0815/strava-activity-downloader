@@ -87,6 +87,9 @@ npm run dev
 ```
 Point your browser to http://localhost:2020.
 
+## Docker
+Build and deployment instructions for Docker Desktop and Google Cloud can be found in [Deploy.md](Deploy.md).
+
 ## Server API
 Instead of using the console UI, the server can be controlled via REST API.
 For usability, all endpoints use `GET`.
