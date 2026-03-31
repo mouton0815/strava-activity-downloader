@@ -21,6 +21,7 @@ impl From<Bearer> for String {
     }
 }
 
+#[derive(Debug)]
 pub struct TokenHolder {
     token: BasicTokenResponse,
     bearer: Bearer, // Bearer token extracted from the access token

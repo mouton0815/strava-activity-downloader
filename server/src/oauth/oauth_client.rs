@@ -54,13 +54,13 @@ impl OAuthClient {
             .redirect(reqwest::redirect::Policy::none())
             .build()?;
 
-        let token = self.client
+        let token = token::validate(self.client
             .exchange_password(
                 &ResourceOwnerUsername::new(user.to_string()),
                 &ResourceOwnerPassword::new(pass.to_string())
             )
             .request_async(&http_client)
-            .await?;
+            .await?)?;
 
         Ok(TokenHolder::new(token))
     }
@@ -170,6 +170,10 @@ mod tests {
     use oauth2::basic::BasicClient;
     use oauth2::{AuthUrl, ClientId, ClientSecret, TokenUrl};
     use crate::oauth::oauth_client::OAuthClient;
+    use wiremock::{MockServer, Mock, ResponseTemplate};
+    use wiremock::matchers::{method, path, body_string_contains};
+    use serde_json::json;
+    use urlencoding::encode;
 
     impl OAuthClient {
         pub fn dummy() -> Self {
@@ -181,5 +185,189 @@ mod tests {
 
             Self { client, scopes: vec![], state: None, target: dummy_url.to_string(), token: None }
         }
+
+        // Test helper to inspect state
+        fn get_state(&self) -> Option<&String> {
+            self.state.as_ref()
+        }
+
+        // Test helper to check if token exists
+        fn has_token(&self) -> bool {
+            self.token.is_some()
+        }
+    }
+
+    fn create_mock_token_response(include_refresh: bool) -> serde_json::Value {
+        let mut response = json!({
+            "access_token": "mock_access_token_12345",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "scope": "read write"
+        });
+        
+        if include_refresh {
+            response["refresh_token"] = json!("mock_refresh_token_67890");
+        }
+        
+        response
+    }
+
+    fn create_mock_client(mock_server: &MockServer) -> OAuthClient {
+        OAuthClient::new(
+            "test-client".to_string(),
+            "test-secret".to_string(),
+            format!("{}/authorize", mock_server.uri()),
+            format!("{}/token", mock_server.uri()),
+            "/dashboard".to_string(),
+            format!("{}/callback", mock_server.uri()),
+            vec!["read".to_string(), "write".to_string()],
+        )
+    }
+
+    #[tokio::test]
+    async fn test_password_grant() {
+        let mock_server = MockServer::start().await;
+        
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .and(body_string_contains("grant_type=password"))
+            .and(body_string_contains("username=testuser"))
+            .and(body_string_contains("password=testpass"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(create_mock_token_response(true)))
+            .mount(&mock_server)
+            .await;
+
+        let client = create_mock_client(&mock_server);
+        let result = client.authorize_password_grant("testuser", "testpass").await;
+        
+        assert!(result.is_ok());
+        let token_holder = result.unwrap();
+        let bearer_string: String = token_holder.bearer().clone().into();
+        assert!(bearer_string.contains("mock_access_token_12345"));
+    }
+
+    #[tokio::test]
+    async fn test_auth_code_flow() {
+        let mock_server = MockServer::start().await;
+
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .and(body_string_contains("grant_type=authorization_code"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(create_mock_token_response(true)))
+            .mount(&mock_server)
+            .await;
+
+        let mut client = create_mock_client(&mock_server);
+
+        // Step 1: Generate and verify authorization URL
+        let auth_url = client.authorize_auth_code_grant();
+        assert!(auth_url.as_str().starts_with(mock_server.uri().as_str()));
+        assert_eq!(auth_url.path(), "/authorize");
+
+        let callback = format!("{}/callback", mock_server.uri().as_str());
+        let callback = encode(callback.as_str());
+        assert!(auth_url.as_str().contains(callback.as_ref()));
+
+        let params: std::collections::HashMap<_, _> = auth_url.query_pairs().collect();
+        assert_eq!(params.get("client_id").map(|s| s.as_ref()), Some("test-client"));
+        assert_eq!(params.get("response_type").map(|s| s.as_ref()), Some("code"));
+        assert!(params.contains_key("state"));
+
+        let scope = params.get("scope").map(|s| s.as_ref()).unwrap_or("");
+        assert!(scope.contains("read"));
+        assert!(scope.contains("write"));
+
+        // Step 2: Simulate callback with auth code
+        let state = client.get_state().unwrap().clone();
+        let redirect_url = client.callback_auth_code_grant("auth_code_xyz", &state).await;
+        assert!(redirect_url.is_ok());
+        assert_eq!(redirect_url.unwrap(), "/dashboard");
+
+        // Step 3: Get bearer token
+        assert!(client.has_token()); // Should already be there (no refresh needed)
+        let bearer = client.get_bearer().await;
+        assert!(bearer.is_ok());
+        assert!(bearer.unwrap().is_some());
+    }
+
+    #[tokio::test]
+    async fn test_token_exchange_fails() {
+        let mock_server = MockServer::start().await;
+        
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .respond_with(ResponseTemplate::new(401).set_body_json(json!({
+                "error": "invalid_grant",
+                "error_description": "Authorization code is invalid"
+            })))
+            .mount(&mock_server)
+            .await;
+
+        let mut client = create_mock_client(&mock_server);
+        let _auth_url = client.authorize_auth_code_grant();
+        let state = client.get_state().unwrap().clone();
+
+        let result = client.callback_auth_code_grant("invalid_code", &state).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_token_refresh() {
+        let mock_server = MockServer::start().await;
+        
+        // First token with very short expiry (1 second)
+        let short_expiry_token = json!({
+            "access_token": "old_access_token",
+            "token_type": "Bearer",
+            "expires_in": 1,
+            "refresh_token": "mock_refresh_token_67890",
+            "scope": "read"
+        });
+        
+        // Refreshed token
+        let refreshed_token = json!({
+            "access_token": "new_access_token",
+            "token_type": "Bearer",
+            "expires_in": 3600,
+            "refresh_token": "new_refresh_token",
+            "scope": "read"
+        });
+
+        // Initial token grant via auth code
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .and(body_string_contains("grant_type=authorization_code"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(short_expiry_token))
+            .mount(&mock_server)
+            .await;
+
+        // Token refresh
+        Mock::given(method("POST"))
+            .and(path("/token"))
+            .and(body_string_contains("grant_type=refresh_token"))
+            .and(body_string_contains("refresh_token=mock_refresh_token_67890"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(refreshed_token))
+            .mount(&mock_server)
+            .await;
+
+        let mut client = create_mock_client(&mock_server);
+
+        // Get initial token via auth code flow
+        let _auth_url = client.authorize_auth_code_grant();
+        let state = client.get_state().unwrap().clone();
+        client.callback_auth_code_grant("test_code", &state).await.unwrap();
+
+        // Wait for token to expire
+        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        // This should trigger a refresh
+        let result = client.get_bearer().await;
+        
+        assert!(result.is_ok());
+        let bearer = result.unwrap();
+        assert!(bearer.is_some());
+        
+        let bearer_string: String = bearer.unwrap().into();
+        assert!(bearer_string.contains("new_access_token"));
     }
 }

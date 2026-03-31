@@ -31,3 +31,5 @@ url = "2.5"
 
 [dev-dependencies]
 axum-test = "19.1"
+urlencoding = "2.1.3"
+wiremock = "0.6"
