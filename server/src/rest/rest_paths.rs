@@ -3,7 +3,7 @@ pub const AUTH_CALLBACK : &str = "/auth-callback";
 
 pub const STATUS : &str = "/status";
 pub const TOGGLE : &str = "/toggle";
-pub const TILES : &str = "/tiles/:zoom";
+pub const TILES : &str = "/tiles/{zoom}";
 
 pub struct StaticDir {
     pub rest_path: &'static str,

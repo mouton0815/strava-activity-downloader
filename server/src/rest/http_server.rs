@@ -94,6 +94,6 @@ mod tests {
             .route(TILES, get(tiles_handler))
             .with_state(state);
 
-        TestServer::new(router).unwrap()
+        TestServer::new(router)
     }
 }

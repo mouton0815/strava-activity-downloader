@@ -1,8 +1,8 @@
 use axum::BoxError;
 use log::{debug, info, warn};
-use oauth2::basic::BasicClient;
-use oauth2::{AuthorizationCode, AuthType, AuthUrl, ClientId, ClientSecret, CsrfToken, HttpRequest, HttpResponse, RedirectUrl, ResourceOwnerPassword, ResourceOwnerUsername, Scope, TokenResponse, TokenUrl};
-use oauth2::reqwest::async_http_client;
+use oauth2::basic::{BasicClient, BasicErrorResponse, BasicRevocationErrorResponse, BasicTokenIntrospectionResponse, BasicTokenResponse};
+use oauth2::{AuthorizationCode, AuthType, AuthUrl, ClientId, ClientSecret, CsrfToken, RedirectUrl, Scope, TokenResponse, TokenUrl, Client, StandardRevocableToken, EndpointSet, EndpointNotSet, ResourceOwnerUsername, ResourceOwnerPassword};
+use oauth2::reqwest;
 use url::Url;
 use crate::oauth::token;
 use crate::oauth::token::{Bearer, TokenHolder};
@@ -21,7 +21,8 @@ type BearerResult = Result<Option<Bearer>, BoxError>;
 /// Configures a [BasicClient] for the given URLs.
 /// Keeps track on the state and the token, once obtained.
 pub struct OAuthClient {
-    client: BasicClient,
+    // This extreme ugliness follows https://github.com/ramosbugs/oauth2-rs/blob/main/UPGRADE.md:
+    client: Client<BasicErrorResponse, BasicTokenResponse, BasicTokenIntrospectionResponse, StandardRevocableToken, BasicRevocationErrorResponse, EndpointSet, EndpointNotSet, EndpointNotSet, EndpointNotSet, EndpointSet>,
     scopes: Vec<String>,
     target: String, // URL to be redirected to after authentication – can be relative or absolute
     state: Option<String>, // Holds the state between an auth-code request and entering the callback
@@ -37,12 +38,11 @@ impl OAuthClient {
                redirect_url: String,
                scopes: Vec<String>,
     ) -> Self {
-        let client = BasicClient::new(
-            ClientId::new(client_id),
-            Some(ClientSecret::new(client_secret.to_string())),
-            AuthUrl::new(auth_url.to_string()).unwrap(), // Panic accepted
-            Some(TokenUrl::new(token_url.to_string()).unwrap())
-        ).set_redirect_uri(RedirectUrl::new(redirect_url).unwrap())
+        let client = BasicClient::new(ClientId::new(client_id))
+            .set_client_secret(ClientSecret::new(client_secret.to_string()))
+            .set_auth_uri(AuthUrl::new(auth_url.to_string()).unwrap()) // Panic accepted
+            .set_token_uri(TokenUrl::new(token_url.to_string()).unwrap())
+            .set_redirect_uri(RedirectUrl::new(redirect_url).unwrap())
             .set_auth_type(AuthType::RequestBody);
 
         Self { client, scopes, target: target_url, state: None, token: None }
@@ -50,12 +50,16 @@ impl OAuthClient {
 
     #[allow(dead_code)]
     pub async fn authorize_password_grant(&self, user: &str, pass: &str) -> TokenResult {
+        let http_client = reqwest::ClientBuilder::new()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
+
         let token = self.client
             .exchange_password(
                 &ResourceOwnerUsername::new(user.to_string()),
                 &ResourceOwnerPassword::new(pass.to_string())
             )
-            .request_async(async_http_client)
+            .request_async(&http_client)
             .await?;
 
         Ok(TokenHolder::new(token))
@@ -71,6 +75,7 @@ impl OAuthClient {
             .authorize_url(CsrfToken::new_random)
             .add_scopes(scopes)
             .url();
+
         self.state = Some(csrf_token.secret().clone());
         auth_url
     }
@@ -101,9 +106,14 @@ impl OAuthClient {
 
     async fn exchange_code_for_token(&self, code: &str) -> TokenResult {
         debug!("Obtain token for code {}", code);
+
+        let http_client = reqwest::ClientBuilder::new()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
+
         let token = token::validate(self.client
             .exchange_code(AuthorizationCode::new(code.to_string()))
-            .request_async(request_wrapper)
+            .request_async(&http_client)
             .await?)?;
 
         info!("Obtained token");
@@ -140,20 +150,19 @@ impl OAuthClient {
 
     async fn refresh_token(&self, token_holder: &TokenHolder) -> TokenResult {
         debug!("Access token expired, refreshing ...");
+
+        let http_client = reqwest::ClientBuilder::new()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()?;
+
         let token = token::validate(self.client
             .exchange_refresh_token(token_holder.token().refresh_token().unwrap())
-            .request_async(request_wrapper)
+            .request_async(&http_client)
             .await?)?;
 
         info!("Refreshed token successfully");
         Ok(TokenHolder::new(token))
     }
-}
-
-async fn request_wrapper(request: HttpRequest) -> Result<HttpResponse, oauth2::reqwest::Error<reqwest::Error>> {
-    debug!("Token request URL: {}", request.url);
-    debug!("Token request body: {:?}", String::from_utf8_lossy(&request.body));
-    async_http_client(request).await
 }
 
 #[cfg(test)]
@@ -165,12 +174,11 @@ mod tests {
     impl OAuthClient {
         pub fn dummy() -> Self {
             let dummy_url = "https://dummy.org";
-            let client = BasicClient::new(
-                ClientId::new("dummy-client".to_string()),
-                Some(ClientSecret::new("dummy-secret".to_string())),
-                AuthUrl::new(dummy_url.to_string()).unwrap(),
-                Some(TokenUrl::new(dummy_url.to_string()).unwrap())
-            );
+            let client = BasicClient::new(ClientId::new("dummy-client".to_string()))
+                .set_client_secret(ClientSecret::new("dummy-secret".to_string()))
+                .set_auth_uri(AuthUrl::new(dummy_url.to_string()).unwrap())
+                .set_token_uri(TokenUrl::new(dummy_url.to_string()).unwrap());
+
             Self { client, scopes: vec![], state: None, target: dummy_url.to_string(), token: None }
         }
     }
