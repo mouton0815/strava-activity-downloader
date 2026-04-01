@@ -4,17 +4,17 @@ docker volume create activity-volume
 ```
 
 ```shell
-docker image build --tag activity-server .
+docker image build --tag strava-downloader .
 ```
 
 ```shell
 docker container run \
   --publish 2525:2525 --detach \
-  --name activity-server \
+  --name strava-downloader \
   --volume activity-volume:/app/data \
   --env DATA_DIR=/app/data \
   --env RUST_LOG=info \
-  activity-server
+  strava-downloader
 ```
 
 # Google Cloud
@@ -27,16 +27,16 @@ gcloud storage buckets create gs://<your-bucket> --project=<your-project>
 ```
 
 ```shell
-gcloud builds submit --tag gcr.io/<your-project>/activity-server
+gcloud builds submit --tag gcr.io/<your-project>/strava-downloader
 ```
 
 ```shell
-gcloud run deploy activity-server \
-  --image gcr.io/<your-project>/activity-server \
+gcloud run deploy strava-downloader \
+  --image gcr.io/<your-project>/strava-downloader \
   --platform managed \
   --region <your-region> \
   --allow-unauthenticated \
-  --add-volume=name=activity-volume,type=cloud-storage,bucket=<your-bucket> \
+  --add-volume=name=activity-volume,type=cloud-storage,bucket=<your-bucket>,mount-options=enable-streaming-writes=false \
   --add-volume-mount=volume=activity-volume,mount-path=/app/data \
   --set-env-vars REDIRECT_URL=<url-assigned-by-gcloud> \
   --set-env-vars DATA_DIR=/app/data \
