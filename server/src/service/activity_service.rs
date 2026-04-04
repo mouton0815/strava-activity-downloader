@@ -7,7 +7,6 @@ use crate::domain::activity::{Activity, ActivityVec};
 use crate::domain::activity_stats::ActivityStats;
 use crate::domain::activity_stream::ActivityStream;
 use crate::domain::map_tile::MapTile;
-use crate::domain::map_tile_bounds::MapTileBounds;
 use crate::domain::track_store_state::TrackStoreState;
 use crate::domain::map_zoom::MapZoom;
 
@@ -99,16 +98,6 @@ impl ActivityService {
         Ok(())
     }
 
-    /// Returns all tiles for the given zoom level
-    pub async fn get_tiles(&mut self, zoom: MapZoom, bounds: Option<MapTileBounds>) -> Result<Vec<MapTile>, BoxError> {
-        if self.store_tiles {
-            Ok(MapTileTable::select(&self.pool, zoom, bounds).await?)
-        } else {
-            warn!("Tile storage disabled");
-            Ok(vec![])
-        }
-    }
-
     /// Deletes **all** tiles for all zoom levels
     pub async fn delete_all_tiles(&mut self) -> Result<(), BoxError> {
         if self.store_tiles {
@@ -124,12 +113,30 @@ impl ActivityService {
 
 #[cfg(test)]
 mod tests {
+    use axum::BoxError;
+    use log::warn;
+    use crate::database::maptile_table::MapTileTable;
     use crate::domain::activity::{Activity, ActivityVec};
     use crate::domain::activity_stats::ActivityStats;
     use crate::domain::activity_stream::ActivityStream;
     use crate::domain::map_tile::MapTile;
     use crate::domain::map_zoom::MapZoom;
     use crate::service::activity_service::ActivityService;
+
+    impl ActivityService {
+        /// Returns all tiles for the given zoom level
+        pub async fn get_tiles(&mut self, zoom: MapZoom) -> Result<Vec<MapTile>, BoxError> {
+            if self.store_tiles {
+                Ok(MapTileTable::select(&self.pool, zoom).await?
+                    .into_iter()
+                    .map(|row| row.get_tile().clone())
+                    .collect())
+            } else {
+                warn!("Tile storage disabled");
+                Ok(vec![])
+            }
+        }
+    }
 
     #[tokio::test]
     async fn test_add_none() {
@@ -172,7 +179,7 @@ mod tests {
         assert!(service.store_tiles(&activities[0], &stream1).await.is_ok());
         assert!(service.store_tiles(&activities[1], &stream2).await.is_ok());
 
-        let results = service.get_tiles(MapZoom::Level14, None).await;
+        let results = service.get_tiles(MapZoom::Level14).await;
         assert!(results.is_ok());
         assert_eq!(results.unwrap(), vec![
             MapTile::new(8237, 8146), // [1.0, 1.0]

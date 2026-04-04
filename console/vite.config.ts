@@ -5,7 +5,7 @@ const SERVER_URL = 'http://localhost:2525'
 
 export default defineConfig({
     plugins: [react()],
-    base: '/console',
+    base: '/',
     server: {
         port: 2020,
         proxy: {

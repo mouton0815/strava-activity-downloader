@@ -7,4 +7,3 @@ pub mod download_delay;
 pub mod track_store_state;
 pub mod map_tile;
 pub mod map_zoom;
-pub mod map_tile_bounds;
