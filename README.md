@@ -17,6 +17,12 @@ and shows the download progress.
 
 <img src="screenshot.png" alt="Screenshot of the console application" style="width:250px;"/>
 
+Optionally, if flag `store_tiles` in `application.yaml` is set to `true`,
+the downloader computes the [slippy map tiles](https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames) 
+for zoom levels 14 and 17 of the downloaded activities and stores them in the same SQLite database.
+The tiles are used by the [tiles hunter](https://github.com/mouton0815/tiles-hunter) project to show which tiles of
+the world map you have already covered with your activities.
+
 ## Preconditions
 #### Required Tools
 * Rust with `cargo` for the server.
